@@ -1,0 +1,225 @@
+﻿@page "/"
+@using System.Net
+@using System.Diagnostics
+@inject IJSRuntime JSRuntime
+@using ShuttleManager.Shared.Services
+@using ShuttleManager.Shared.Intefraces
+@inject IShuttleHubClientService HubClientService
+@using ShuttleManager.Shared.Models
+
+<PageTitle>Панель управления шаттлами</PageTitle>
+
+<div class="container-fluid">
+    <h3>Панель управления шаттлами</h3>
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5>Сканирование сети</h5>
+        </div>
+        <div class="card-body">
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <label for="baseIp" class="form-label">Базовый IP:</label>
+                    <InputText id="baseIp" @bind-Value="BaseIp" class="form-control" placeholder="192.168.40" />
+                </div>
+                <div class="col-md-6">
+                    <label for="port" class="form-label">Порт:</label>
+                    <InputNumber id="port" @bind-Value="Port" class="form-control" min="1" max="65535" />
+                </div>
+            </div>
+            <button @onclick="StartScan" class="btn btn-primary w-100 mb-3" disabled="@IsScanning">
+                @(IsScanning ? "Сканирование..." : "Найти устройства")
+            </button>
+
+            @if (IsScanning)
+            {
+                <div class="alert alert-info">
+                    <div class="spinner-border spinner-border-sm" role="status"></div>
+                    Поиск на @(BaseIp).@(StartRange)-@(EndRange):@(Port)...
+                </div>
+            }
+
+            @if (FoundDevices.Any())
+            {
+                <div>
+                    <h6>Найденные устройства:</h6>
+                    <ul class="list-group list-group-flush">
+                        @foreach (var ip in FoundDevices)
+                        {
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                @ip.ToString()
+                                <button class="btn btn-sm btn-outline-success"
+                                        @onclick="() => ConnectToShuttle(ip.ToString())"
+                                        disabled="@IsAlreadyConnected(ip.ToString())">
+                                    @(IsAlreadyConnected(ip.ToString()) ? "Подключен" : "Подключить")
+                                </button>
+                            </li>
+                        }
+                    </ul>
+                </div>
+            }
+            else if (ScanCompleted && !IsScanning && !FoundDevices.Any())
+            {
+                <div class="alert alert-secondary">
+                    Устройства не найдены.
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="row">
+        @foreach (var shuttle in _connectedShuttles)
+        {
+            <div class="mb-3">
+                <ShuttleHubControlComponent Shuttle="shuttle"
+                                            OnDisconnected="OnShuttleDisconnected" />
+            </div>
+        }
+    </div>
+
+    @if (!_connectedShuttles.Any())
+    {
+        <div class="alert alert-info">
+            Подключенных шаттлов нет. Используйте сканер для поиска и подключения.
+        </div>
+    }
+</div>
+
+@code {
+    private string BaseIp = "192.168.40";
+    private int Port = 3333;
+    private int StartRange = 1;
+    private int EndRange = 254;
+    private bool IsScanning = false;
+    private bool ScanCompleted = false;
+    private List<IPAddress> FoundDevices = new();
+    private List<Shuttle> _connectedShuttles = new();
+    private Timer? _cleanupTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Подписываемся только на события подключения/отключения для управления списком
+        HubClientService.Connected += OnShuttleConnected;
+        HubClientService.Disconnected += OnShuttleDisconnected;
+
+        await RefreshConnectedShuttles();
+
+        // Запускаем таймер для периодической очистки
+        _cleanupTimer = new Timer(async _ => await CleanupDisconnectedShuttles(),
+            null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+    }
+
+    private async Task RefreshConnectedShuttles()
+    {
+        var connectedShuttles = HubClientService.GetConnectedShuttles();
+        _connectedShuttles = connectedShuttles;
+        StateHasChanged();
+    }
+
+    private async Task CleanupDisconnectedShuttles()
+    {
+        await InvokeAsync(async () =>
+        {
+            var currentShuttles = HubClientService.GetConnectedShuttles();
+            var currentIpAddresses = currentShuttles.Select(s => s.IPAddress).ToHashSet();
+
+            // Удаляем шаттлы, которых нет в текущем списке подключений
+            var shuttlesToRemove = _connectedShuttles
+                .Where(s => !currentIpAddresses.Contains(s.IPAddress))
+                .ToList();
+
+            if (shuttlesToRemove.Any())
+            {
+                foreach (var shuttle in shuttlesToRemove)
+                {
+                    _connectedShuttles.Remove(shuttle);
+                }
+                StateHasChanged();
+            }
+        });
+    }
+
+    private async Task StartScan()
+    {
+        if (IsScanning) return;
+        IsScanning = true;
+        ScanCompleted = false;
+        FoundDevices.Clear();
+        StateHasChanged();
+
+        try
+        {
+            FoundDevices = await HubClientService.ScanNetworkAsync(BaseIp, StartRange, EndRange, Port, 1000);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Ошибка сканирования: {ex.Message}");
+            await JSRuntime.InvokeVoidAsync("alert", $"Ошибка сканирования: {ex.Message}");
+        }
+        finally
+        {
+            IsScanning = false;
+            ScanCompleted = true;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ConnectToShuttle(string ipAddress)
+    {
+        bool success = await HubClientService.ConnectToShuttleAsync(ipAddress, Port);
+        if (success)
+        {
+            // НЕ добавляем шаттл здесь - дождемся события OnShuttleConnected
+            // Это предотвратит дублирование карточек
+            Debug.WriteLine($"[INFO] Запрошено подключение к {ipAddress}\n");
+        }
+        else
+        {
+            Debug.WriteLine($"[ERROR] Не удалось инициировать подключение к {ipAddress}\n");
+        }
+    }
+
+    private void OnShuttleConnected(string ipAddress, int shuttleId)
+    {
+        InvokeAsync(() =>
+        {
+            // Добавляем только если еще нет в списке
+            if (!_connectedShuttles.Any(s => s.IPAddress == ipAddress))
+            {
+                _connectedShuttles.Add(new Shuttle
+                {
+                    IPAddress = ipAddress,
+                    IsConnected = true,
+                    ConnectionTime = DateTime.Now,
+                    LastActivity = DateTime.Now,
+                    ShuttleNumber = shuttleId
+                });
+                StateHasChanged();
+                Debug.WriteLine($"[SUCCESS] Подключен шаттл {ipAddress} (ID: {shuttleId})\n");
+            }
+        });
+    }
+
+    private void OnShuttleDisconnected(string ipAddress)
+    {
+        InvokeAsync(() =>
+        {
+            int removedCount = _connectedShuttles.RemoveAll(s => s.IPAddress == ipAddress);
+            if (removedCount > 0)
+            {
+                StateHasChanged();
+            }
+        });
+    }
+
+    private bool IsAlreadyConnected(string ipAddress)
+    {
+        return _connectedShuttles.Any(s => s.IPAddress == ipAddress);
+    }
+
+    public void Dispose()
+    {
+        HubClientService.Connected -= OnShuttleConnected;
+        HubClientService.Disconnected -= OnShuttleDisconnected;
+        _cleanupTimer?.Dispose();
+    }
+}

@@ -1,0 +1,622 @@
+﻿@using System.Diagnostics
+@inject IJSRuntime JSRuntime
+@using System.Text.Json.Nodes
+@using Microsoft.Extensions.Logging
+@using ShuttleManager.Shared.Services
+@using ShuttleManager.Shared.Intefraces
+@inject IBrowserLauncherService BrowserLauncher
+@inject IShuttleHubClientService HubClientService
+@inject ILogger<ShuttleHubControlComponent> Logger
+@using ShuttleManager.Shared.Models
+
+<div class="card mb-3" style="min-width: 1600px">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">
+            Шаттл №: @Shuttle.ShuttleNumber
+            <span class="badge @(IsConnected ? "bg-success" : "bg-warning") ms-2">
+                @(IsConnected ? "Подключен" : "Подключение...")
+            </span>
+        </h5>
+        <div>
+            <button class="btn btn-sm btn-danger" @onclick="DisconnectThis" title="Отключиться">
+                <i class="bi bi-power"></i> Закрыть
+            </button>
+        </div>
+    </div>
+    <div class="card-body">
+        @if (!IsConnected)
+        {
+            <div class="alert alert-warning mb-3 d-flex align-items-center">
+                <i class="bi bi-hourglass-split me-2"></i>
+                <div>
+                    <strong>Подключение к @Shuttle.IPAddress...</strong>
+                    @if (_connectionAttempts > 0)
+                    {
+                        <div class="small">Попытка @_connectionAttempts</div>
+                    }
+                </div>
+            </div>
+        }
+        else
+        {
+            <!-- Панель состояния -->
+            <div class="mb-3">
+                <div class="row">
+                    <div class="col-md-3">
+                        <label class="form-label small text-muted">Батарея:</label>
+                        <p id="batteryData_@ComponentId" class="fw-bold @GetBatteryColorClass()">
+                            @BatteryData
+                        </p>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small text-muted">Заряд:</label>
+                        <div class="progress" style="height: 20px;">
+                            <div class="progress-bar @GetBatteryProgressClass()"
+                                 role="progressbar"
+                                 style="width: @(BatteryPercentageValue)%;"
+                                 aria-valuenow="@BatteryPercentageValue"
+                                 aria-valuemin="0"
+                                 aria-valuemax="100">
+                                @BatteryPercentageValue%
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small text-muted">Статус:</label>
+                        <p id="currentStatus_@ComponentId" class="fw-bold @GetStatusColorClass()">
+                            @CurrentStatus
+                        </p>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small text-muted">Активность:</label>
+                        <p class="small text-muted">@LastActivityTime</p>
+                    </div>
+                </div>
+
+                <div class="row mt-2">
+                    <div class="col-md-3">
+                        <label class="form-label small text-muted">Напряжение:</label>
+                        <p id="voltage_@ComponentId" class="fw-bold">
+                            @Voltage.ToString("F1") V
+                        </p>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small text-muted">Код ошибки:</label>
+                        <p id="errorCode_@ComponentId" class="fw-bold @(ErrorCode != 0 ? "text-danger" : "text-success")">
+                            @(ErrorCode == 0 ? "Нет" : ErrorCode.ToString())
+                        </p>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small text-muted">Код предупреждения:</label>
+                        <p id="warningCode_@ComponentId" class="fw-bold @(WarningCode != 0 ? "text-warning" : "text-success")">
+                            @(WarningCode == 0 ? "Нет" : WarningCode.ToString())
+                        </p>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small text-muted">Время работы:</label>
+                        <p class="small text-muted">@Uptime</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Панель управления -->
+            @* <div class="mb-3">
+                <div class="row g-2">
+                    <div class="col-md-6">
+                        <div class="d-grid gap-2 w-100">
+                            <button class="btn btn-primary btn-sm w-100"
+                                    @onclick="SendLoadCommand"
+                                    title="Команда загрузки">
+                                <i class="bi bi-upload"></i> Загрузка ↗
+                            </button>
+                            <button class="btn btn-info btn-sm w-100"
+                                    @onclick="SendDemoCommand"
+                                    title="Запуск демо-режима">
+                                <i class="bi bi-play-circle"></i> Демо
+                            </button>
+                            <button class="btn btn-danger btn-sm w-100"
+                                    @onclick="SendSaveSettingCommand"
+                                    title="Сохранение настроек шаттла">
+                                <i class="bi bi-stop-circle"></i> Сохраненить настройки
+                            </button>
+                            <button class="btn btn-danger btn-sm w-100"
+                                    @onclick="SendUpdateFirmwareCommand"
+                                    title="Открытие меню обновления прошивки">
+                                <i class="bi bi-stop-circle"></i> FRM
+                            </button>
+                            <button class="btn btn-danger btn-sm w-100"
+                                    @onclick="SendStopCommand"
+                                    title="Остановка шаттла">
+                                <i class="bi bi-stop-circle"></i> STOP
+                            </button>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="d-grid gap-2 w-100">
+                            <button class="btn btn-warning btn-sm w-100"
+                                    @onclick="SendUnloadCommand"
+                                    title="Команда выгрузки">
+                                <i class="bi bi-arrow-repeat"></i> Выгрузка
+                            </button>
+                            
+                            <button class="btn btn-dark btn-sm w-100"
+                                    @onclick="SendResetCommand"
+                                    title="Сброс ошибок">
+                                <i class="bi bi-arrow-counterclockwise"></i> Сброс ошибок
+                            </button>
+                            <button class="btn btn-outline-dark btn-sm w-100"
+                                    @onclick="SendCalibrateCommand"
+                                    title="Команда калибровки шаттла">
+                                <i class="bi bi-gear"></i> Калибровка
+                            </button>
+                            <button class="btn btn-danger btn-sm w-100"
+                                    @onclick="SendUpdateStateShuttleCommand"
+                                    title="Применение обновления прогивки">
+                                <i class="bi bi-stop-circle"></i> UPD
+                            </button>
+                            <button class="btn btn-danger btn-sm w-100"
+                                    @onclick="SendRebootShuttleCommand"
+                                    title="Перезагрузка шаттла">
+                                <i class="bi bi-stop-circle"></i> REBOOT
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div> *@
+            <div class="mb-3">
+                <div class="row g-3">
+                    <!-- Блок 1: Основные операции -->
+                    <div class="col-md-6">
+                        <h6 class="fw-bold text-muted mb-2">Основные операции</h6>
+                        <div class="d-grid gap-2 w-100">
+                            <button class="btn btn-success btn-sm w-100" @onclick="SendLoadCommand" title="Запуск цикла загрузки">
+                                <i class="bi bi-upload me-1"></i>Загрузка ↗
+                            </button>
+                            <button class="btn btn-warning btn-sm w-100" @onclick="SendUnloadCommand" title="Запуск цикла выгрузки">
+                                <i class="bi bi-download me-1"></i>Выгрузка ↘
+                            </button>
+                            <button class="btn btn-info btn-sm w-100" @onclick="SendDemoCommand" title="Запуск демонстрационного режима">
+                                <i class="bi bi-play-circle me-1"></i>Демо-режим
+                            </button>
+                            <button class="btn btn-secondary btn-sm w-100" @onclick="SendGoHomeCommand" title="Возврат шаттла в исходную позицию" disabled>
+                                <i class="bi bi-house-door me-1"></i>Домой
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Блок 2: Ручное управление перемещением -->
+                    <div class="col-md-6">
+                        <h6 class="fw-bold text-muted mb-2">Ручное управление</h6>
+                        <div class="d-grid gap-2 w-100">
+                            <button class="btn btn-primary btn-sm w-100" @onclick="SendUpShuttleCommand" title="Движение вперёд">
+                                <i class="bi bi-arrow-up-square me-1"></i>Вперёд (UP)
+                            </button>
+                            <div class="btn-group w-100" role="group">
+                                <button class="btn btn-primary btn-sm" @onclick="SendLeftShuttleCommand" title="Движение влево" disabled>
+                                    <i class="bi bi-arrow-left-square me-1" ></i>← LEFT
+                                </button>
+                                <button class="btn btn-primary btn-sm" @onclick="SendRightShuttleCommand" title="Движение вправо" disabled>
+                                    <i class="bi bi-arrow-right-square me-1"></i>RIGHT →
+                                </button>
+                            </div>
+                            <button class="btn btn-primary btn-sm w-100" @onclick="SendDownShuttleCommand" title="Движение назад">
+                                <i class="bi bi-arrow-down-square me-1"></i>Назад (DOWN)
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Блок 3: Система, безопасность и обслуживание -->
+                    <div class="col-md-6 mt-3 mt-md-0">
+                        <h6 class="fw-bold text-muted mb-2">Система и безопасность</h6>
+                        <div class="d-grid gap-2 w-100">
+                            <button class="btn btn-outline-dark btn-sm w-100" @onclick="SendResetCommand" title="Сброс текущих ошибок">
+                                <i class="bi bi-arrow-counterclockwise me-1"></i>Сброс ошибок
+                            </button>
+                            <button class="btn btn-danger btn-sm w-100" @onclick="SendStopCommand" title="Экстренная остановка всех операций">
+                                <i class="bi bi-stop-circle-fill me-1"></i><strong>STOP</strong>
+                            </button>
+                            <button class="btn btn-secondary btn-sm w-100" @onclick="SendCalibrateCommand" title="Запуск процедуры калибровки" disabled>
+                                <i class="bi bi-rulers me-1"></i>Калибровка
+                            </button>
+                            <button class="btn btn-secondary btn-sm w-100" @onclick="SendSaveSettingCommand" title="Сохранить текущие параметры в память" disabled>
+                                <i class="bi bi-save me-1"></i>Сохранить настройки
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Блок 4: Обновление и перезагрузка -->
+                    <div class="col-md-6 mt-3 mt-md-0">
+                        <h6 class="fw-bold text-muted mb-2">Прошивка и перезагрузка</h6>
+                        <div class="d-grid gap-2 w-100">
+                            <button class="btn btn-outline-primary btn-sm w-100" @onclick="SendUpdateFirmwareCommand" title="Открыть веб-интерфейс обновления прошивки" >
+                                <i class="bi bi-cloud-arrow-up me-1"></i>Обновить прошивку (FRM)
+                            </button>
+                            <button class="btn btn-outline-primary btn-sm w-100" @onclick="SendUpdateStateShuttleCommand" title="Применить загруженное обновление" >
+                                <i class="bi bi-arrow-clockwise me-1"></i>Применить обновление (UPD)
+                            </button>
+                            <button class="btn btn-outline-primary btn-sm w-100" @onclick="SendRebootShuttleCommand" title="Полная перезагрузка шаттла" disabled>
+                                <i class="bi bi-arrow-repeat me-1"></i>Перезагрузка (RBT)
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Терминал -->
+            <div>
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <label class="form-label small text-muted">Терминал:</label>
+                    <div>
+                        <button class="btn btn-sm btn-outline-secondary me-1" @onclick="ClearTerminal" title="Очистить терминал">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                        <span class="badge bg-secondary">@TerminalLines.Count строк</span>
+                    </div>
+                </div>
+
+                <div id="terminalContainer_@ComponentId"
+                     class="terminal-container"
+                     style="height: 200px; overflow-y: auto; border: 1px solid #dee2e6; padding: 10px; font-family: 'Consolas', 'Courier New', monospace; font-size: 0.8em; background-color: #f8f9fa; border-radius: 0.375rem;">
+                    @((MarkupString)TerminalOutputHtml)
+                </div>
+
+                <div class="input-group input-group-sm mt-2">
+                    <span class="input-group-text">
+                        <i class="bi bi-terminal"></i>
+                    </span>
+                    <InputText @bind-Value="ManualCommand"
+                               class="form-control form-control-sm"
+                               placeholder="Введите команду..."
+                               @onkeypress="HandleKeyPress"
+                               disabled="@(!IsConnected || _isCommandInProgress)" />
+                    <button class="btn btn-primary btn-sm"
+                            @onclick="SendManualCommand">
+                        <i class="bi bi-send"></i> Отпр
+                    </button>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public Shuttle Shuttle { get; set; } = null!;
+    [Parameter] public EventCallback<string> OnDisconnected { get; set; }
+
+    private readonly List<string> _terminalLines = new();
+    private string _terminalOutputHtml = "";
+    private string _manualCommand = "";
+    private string _componentId = Guid.NewGuid().ToString();
+    private bool _isCommandInProgress;
+    private int _connectionAttempts;
+    private CancellationTokenSource _componentCts = new();
+
+    private string CurrentStatus => Shuttle.CurrentStatus;
+    private int ErrorCode => Shuttle.ErrorCode;
+    private int WarningCode => Shuttle.WarningCode;
+    private double Voltage => Shuttle.BatteryVoltage;
+    private int BatteryPercentageValue => Shuttle.BatteryPercentage;
+    private string LastActivityTime => Shuttle.LastActivity.ToString("HH:mm:ss");
+    private string Uptime => (DateTime.Now - Shuttle.ConnectionTime).ToString(@"hh\:mm\:ss");
+    private string BatteryData => $"Батарея: {Shuttle.BatteryVoltage:F1}V | Заряд: {Shuttle.BatteryPercentage}%";
+    private bool IsConnected => Shuttle.IsConnected;
+    private string ComponentId => _componentId;
+    private List<string> TerminalLines => _terminalLines;
+    private string TerminalOutputHtml => _terminalOutputHtml;
+    private string ManualCommand { get => _manualCommand; set => _manualCommand = value; }
+    private int countDebug = 1;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            HubClientService.Connected += OnHubConnected;
+            HubClientService.Disconnected += OnHubDisconnected;
+            HubClientService.TelemetryReceived += OnTelemetryReceived;
+            HubClientService.LogReceived += OnLogReceived;
+
+            Logger.LogInformation("Компонент инициализирован для {IpAddress}", Shuttle.IPAddress);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Ошибка инициализации компонента для {IpAddress}", Shuttle.IPAddress);
+            LogToTerminal($"[ERROR] Ошибка инициализации: {ex.Message}\n");
+        }
+    }
+
+    private bool IsEventForThisShuttle(string ipAddress)
+    {
+        //Debug.WriteLine($"Отработка вызова ивента для работы с шаттлом: {countDebug}");
+        countDebug++;
+        return ipAddress == Shuttle.IPAddress;
+    }
+
+    private async void OnHubConnected(string ip, int id)
+    {
+        if (!IsEventForThisShuttle(ip)) return;
+
+        await InvokeAsync(() =>
+        {
+            Shuttle.IsConnected = true;
+            Shuttle.ConnectionTime = DateTime.Now;
+            Shuttle.LastActivity = DateTime.Now;
+            LogToTerminal($"[SUCCESS] Подключено к шаттлу ID: {id}\n");
+            StateHasChanged();
+        });
+    }
+
+    private async void OnHubDisconnected(string ip)
+    {
+        if (!IsEventForThisShuttle(ip)) return;
+
+        await InvokeAsync(() =>
+        {
+            Shuttle.IsConnected = false;
+            LogToTerminal("[WARNING] Соединение разорвано\n");
+            StateHasChanged();
+            _ = OnDisconnected.InvokeAsync(ip);
+        });
+    }
+
+    private async void OnTelemetryReceived(string ip, JsonNode telemetry)
+    {
+        if (!IsEventForThisShuttle(ip)) return;
+
+        await InvokeAsync(() =>
+        {
+            try
+            {
+                ProcessTelemetryData(telemetry);
+                Shuttle.LastActivity = DateTime.Now;
+                StateHasChanged();
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Ошибка обработки телеметрии от {IpAddress}", ip);
+            }
+        });
+    }
+
+    private void ProcessTelemetryData(JsonNode telemetry)
+    {
+        var id = telemetry["id"]?.GetValue<int>() ?? 0;
+        var batt = telemetry["batt"]?.GetValue<int>() ?? 0;
+        var volt = telemetry["volt"]?.GetValue<double>() ?? 0.0;
+        var stateStr = telemetry["state_s"]?.ToString() ?? "Неизвестно";
+        var err = telemetry["err"]?.GetValue<int>() ?? 0;
+        var warn = telemetry["warn"]?.GetValue<int>() ?? 0;
+
+        Shuttle.ShuttleNumber = id;
+        Shuttle.BatteryPercentage = batt;
+        Shuttle.BatteryVoltage = volt;
+        Shuttle.CurrentStatus = stateStr;
+        Shuttle.ErrorCode = err;
+        Shuttle.WarningCode = warn;
+
+        //if (err != 0)
+            //LogToTerminal($"[ALERT] Код ошибки: {err}\n");
+        //if (warn != 0) 
+           // LogToTerminal($"[WARNING] Код предупреждения: {warn}\n");
+    }
+
+    private async void OnLogReceived(string ip, string log)
+    {
+        if (!IsEventForThisShuttle(ip)) return;
+
+        await InvokeAsync(() =>
+        {
+            if (log.Contains("##HEARTBEAT##"))
+            {
+                LogToTerminal($"[HEARTBEAT] {log}\n");
+            }
+            else
+            {
+                var cleanLog = log.Contains("##TELEMETRY##") ? log.Substring(0, log.IndexOf("##TELEMETRY##")) : log;
+                LogToTerminal($"[{DateTime.Now}] {cleanLog}\n");
+            }
+        });
+    }
+
+    private async Task SendCommandAsync(string command, string description = "")
+    {
+        if (!Shuttle.IsConnected)
+        {
+            LogToTerminal("[ERROR] Нет подключения\n");
+            return;
+        }
+
+        _isCommandInProgress = true;
+        try
+        {
+            StateHasChanged();
+
+            var displayCommand = string.IsNullOrEmpty(description) ? command : $"{command} ({description})";
+            LogToTerminal($"[CMD] Отправка: {displayCommand}\n");
+
+
+            var success = await HubClientService.SendCommandToShuttleAsync(Shuttle.IPAddress, command, 1000);
+
+            if (success)
+            {
+                LogToTerminal($"[SUCCESS] Команда выполнена: {command}\n");
+            }
+            else
+            {
+                LogToTerminal($"[ERROR] Ошибка выполнения: {command}\n");
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            LogToTerminal($"[WARNING] Команда отменена: {command}\n");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Ошибка отправки команды {Command} к {IpAddress}", command, Shuttle.IPAddress);
+            LogToTerminal($"[ERROR] Исключение при отправке: {ex.Message}\n");
+        }
+        finally
+        {
+            _isCommandInProgress = false;
+            StateHasChanged();
+        }
+    }
+    private async Task SendStopCommand() => await SendCommandAsync("STOP", "Остановка");
+    private async Task SendLoadCommand() => await SendCommandAsync("LOAD", "Загрузка");
+    private async Task SendUnloadCommand() => await SendCommandAsync("UNLOAD", "Выгрузка");
+    private async Task SendUpShuttleCommand() => await SendCommandAsync("UP", "Подъём");
+    private async Task SendDownShuttleCommand() => await SendCommandAsync("DOWN", "Спуск");
+    private async Task SendManualShuttleCommand() => await SendCommandAsync("MANUAL", "Manual");
+    private async Task SendDemoCommand() => await SendCommandAsync("DEMO", "Демо-режим");
+    private async Task SendResetCommand() => await SendCommandAsync("RESET_ERRORS", "Сброс ошибок");
+
+    private async Task SendSaveSettingCommand() => await SendCommandAsync("SAVE_SETTINGS", "Сохранение настроек"); // disabled
+    private async Task SendCalibrateCommand() => await SendCommandAsync("CALIBRATE", "Калибровка шаттла"); // disabled
+    private async Task SendGoHomeCommand() => await SendCommandAsync("GOTO_HOME", "Возвращение домой"); // disabled
+
+    //Параметры
+    private async Task SendSetTimeShuttleCommand() => await SendCommandAsync("SET_TIME", "Установка времени");
+    private async Task SendSetMaxSpeedShuttleCommand() => await SendCommandAsync("SET_MAX_SPEED", "Установка максимальной скорости");
+    private async Task SendSetMinPowerShuttleCommand() => await SendCommandAsync("SET_MIN_BATT", "Установка минимальной мощности");
+    private async Task SendMoveForwardShuttleCommand() => await SendCommandAsync("MOVE_FORWARD", "Движение обратно");
+    private async Task SendSetMoveReverseShuttleCommand() => await SendCommandAsync("MOVE_REVERSE", "Реверс движения");
+    private async Task SendSetShuttleNumCommand() => await SendCommandAsync("SET_SHUTTLE_NUM", "Установка номера шаттла");
+
+    private async Task SendLeftShuttleCommand() => await SendCommandAsync("dLeft_", "движение влево"); // disabled
+    private async Task SendRightShuttleCommand() => await SendCommandAsync("dRight", "движение вправо"); // disabled
+    
+      
+    
+    private async Task SendUpdateFirmwareCommand() => await SendUpdateCommandAndOpenBrowser();
+    private async Task SendUpdateStateShuttleCommand() => await SendCommandAsync("UPD", "Update shuttle");
+    private async Task SendRebootShuttleCommand() => await SendCommandAsync("RBT", "Reboot shuttle");
+
+    
+    
+
+
+    private async Task SendUpdateCommandAndOpenBrowser()
+    {
+        await SendCommandAsync("FRM", "Обновление");
+        await OpenWebInterfaceAsync();
+    }
+
+    private async Task OpenWebInterfaceAsync()
+    {
+        var url = $"http://{Shuttle.IPAddress}/list";
+        try
+        {
+            var uri = new Uri(url);
+            await BrowserLauncher.OpenBrowserAsync(uri);
+            LogToTerminal($"[INFO] Открыт веб-интерфейс: {url}\n");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Ошибка открытия веб-интерфейса {Url}", url);
+            LogToTerminal($"[ERROR] Не удалось открыть браузер: {ex.Message}\n");
+        }
+    }
+
+    private async Task SendManualCommand()
+    {
+        if (!string.IsNullOrWhiteSpace(_manualCommand))
+        {
+            await SendCommandAsync(_manualCommand.Trim(), "Ручная команда");
+            _manualCommand = "";
+        }
+    }
+
+    private async Task HandleKeyPress(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await SendManualCommand();
+        }
+    }
+
+    private async Task DisconnectThis()
+    {
+        HubClientService.DisconnectFromShuttle(Shuttle.IPAddress);
+        LogToTerminal("[INFO] Запрошено отключение\n");
+        await OnDisconnected.InvokeAsync(Shuttle.IPAddress);
+    }
+
+    private void ClearTerminal()
+    {
+        _terminalLines.Clear();
+        _terminalOutputHtml = "";
+        StateHasChanged();
+    }
+
+    private void LogToTerminal(string message)
+    {
+        var lines = message.Split(new[] { "\r\n", "\n", "\r" }, StringSplitOptions.RemoveEmptyEntries);
+        _terminalLines.AddRange(lines);
+
+        if (_terminalLines.Count > 1000)
+        {
+            _terminalLines.RemoveRange(0, _terminalLines.Count - 500);
+        }
+
+        _terminalOutputHtml = string.Join("",
+            _terminalLines.Select(line =>
+                $"<div class=\"terminal-line\">{System.Net.WebUtility.HtmlEncode(line)}</div>"));
+
+        StateHasChanged();
+        _ = ScrollTerminalToBottomAsync();
+    }
+
+    private async Task ScrollTerminalToBottomAsync()
+    {
+        try
+        {
+            var elementId = $"terminalContainer_{_componentId}";
+            await JSRuntime.InvokeVoidAsync("scrollToBottomIfNeeded", elementId);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Ошибка скролла терминала");
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await ScrollTerminalToBottomAsync();
+        }
+    }
+
+    private string GetBatteryColorClass() => BatteryPercentageValue switch
+    {
+        >= 70 => "text-success",
+        >= 30 => "text-warning",
+        _ => "text-danger"
+    };
+
+    private string GetBatteryProgressClass() => BatteryPercentageValue switch
+    {
+        >= 70 => "bg-success",
+        >= 30 => "bg-warning",
+        _ => "bg-danger"
+    };
+
+    private string GetStatusColorClass() => CurrentStatus.ToLowerInvariant() switch
+    {
+        string s when s.Contains("ошибка") || s.Contains("error") => "text-danger",
+        string s when s.Contains("предупреждение") || s.Contains("warning") => "text-warning",
+        string s when s.Contains("работа") || s.Contains("work") => "text-success",
+        _ => "text-secondary"
+    };
+
+    public void Dispose()
+    {
+        Logger.LogInformation("Дисконнект компонента для IP: {IpAddress}", Shuttle.IPAddress);
+
+        _componentCts.Cancel();
+        _componentCts.Dispose();
+
+        HubClientService.Connected -= OnHubConnected;
+        HubClientService.Disconnected -= OnHubDisconnected;
+        HubClientService.TelemetryReceived -= OnTelemetryReceived;
+        HubClientService.LogReceived -= OnLogReceived;
+    }
+}
