@@ -28,7 +28,7 @@ namespace ShuttleManager.Shared.Services
             public Task? ReceiveTask { get; set; }
             public int ShuttleId { get; set; } = -1;
             public string IpAddress { get; set; } = string.Empty;
-            public readonly MemoryStream ReceiveBuffer = new(); // Буфер для "лишних" данных
+            public readonly MemoryStream ReceiveBuffer = new();
         }
 
         public async Task<List<IPAddress>> ScanNetworkAsync(string baseIp, int startIp, int endIp, int port, int timeoutMs = 1000)
