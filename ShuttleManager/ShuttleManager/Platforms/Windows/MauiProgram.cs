@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.Logging;
 using ShuttleManager.Platforms.Windows.Services;
+using ShuttleManager.Services;
 using ShuttleManager.Shared.Interfaces;
 using ShuttleManager.Shared.Services;
 
@@ -23,6 +24,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<IShuttleHubClientService, ShuttleHubClientService>();
         builder.Services.AddSingleton<IBrowserLauncherService, BrowserLauncherService>();
         builder.Services.AddSingleton<IFilePickerService, FilePickerService>();
+        builder.Services.AddSingleton<IWebBrowserService, WebBrowserService>();
         builder.Services.AddMauiBlazorWebView();
         #if DEBUG
         builder.Services.AddBlazorWebViewDeveloperTools();

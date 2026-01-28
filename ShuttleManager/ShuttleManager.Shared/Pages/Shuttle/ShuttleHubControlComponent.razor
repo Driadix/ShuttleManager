@@ -10,6 +10,7 @@
 @using ShuttleManager.Shared.Models
 @inject IFilePickerService FilePickerService
 @inject NavigationManager Navigation
+@inject IWebBrowserService WebBrowserService
 
 <div class="card mb-3">
     <div class="card-header d-flex justify-content-between align-items-center">
@@ -129,6 +130,11 @@
                                     <div class="row g-1">
                                         <div class="col-6">
                                             <div class="mb-1">
+                                                <button class="btn btn-outline-primary btn-sm w-100" @onclick="OpenOtaDisplayUpdate" title="OTA Display">
+                                                    <i class="bi bi-arrow-clockwise me-1"></i>⚠️display firmware
+                                                </button>
+                                            </div>
+   @*                                          <div class="mb-1">
                                                 <button class="btn btn-outline-primary btn-sm w-100" @onclick="SendFRMFirmwareCommand" title="Открыть веб-интерфейс обновления прошивки">
                                                     <i class="bi bi-cloud-arrow-up me-1"></i>Обновление прошивки платы (FRM)
                                                 </button>
@@ -137,26 +143,28 @@
                                                 <button class="btn btn-outline-primary btn-sm w-100" @onclick="SendUpdateStateShuttleCommand" title="Применить загруженное обновление">
                                                     <i class="bi bi-arrow-clockwise me-1"></i>Обновление прошивки экрана (UPD)
                                                 </button>
-                                            </div>
-                                           
-                                        </div>
-                                        <div class="col-6">
+                                            </div> *@
                                             <div class="mb-1">
                                                 <button class="btn btn-outline-primary btn-sm w-100" @onclick="SetTime" title="Установить время">
                                                     <i class="bi bi-arrow-clockwise me-1"></i>Установить время
                                                 </button>
                                             </div>
+                                           
+                                        </div>
+                                        <div class="col-6">
+                                            <div class="mb-1">
+                                                <button class="btn btn-outline-primary btn-sm w-100" @onclick="OpenOtaStmUpdate" title="OTA STM">
+                                                    <i class="bi bi-arrow-clockwise me-1"></i>⚠️STM firmware
+                                                </button>
+                                            </div>
+
                                             <div class="mb-1">
                                                 <button class="btn btn-outline-primary btn-sm w-100" @onclick="OpenLogsShuttle" title="Открыть логи шаттла" disabled="@(OperatingSystem.IsAndroid())">
                                                     <i class="bi bi-arrow-clockwise me-1"></i>Логи шаттла
                                                 </button>
                                             </div>
                                            
-                                            <div class="mb-1">
-                                                <button class="btn btn-outline-primary btn-sm w-100" @onclick="OpenOtaUpdate" title="OTA прошивка">
-                                                    <i class="bi bi-arrow-clockwise me-1"></i>!DEBUG! OTA прошивка
-                                                </button>
-                                            </div>
+
                                             
                                         </div>
                                     </div>
@@ -344,7 +352,7 @@
     [Parameter] public Shuttle Shuttle { get; set; } = null!;
     [Parameter] public EventCallback<string> OnDisconnected { get; set; }
 
-    private int ShuttleNumberInput = 0;
+    private int ShuttleNumberInput = 1;
     private int MoveDistanceBackwardInput = 0;
     private int MoveDistanceForwardInput = 0;
     private int MaxSpeedInput = 0;
@@ -843,10 +851,16 @@
         Process.Start("explorer.exe", way);
     }
 
-    private async Task OpenOtaUpdate()
+    private async Task OpenOtaDisplayUpdate()
+    {
+        await SendCommandAsync("UPD", "Обновление");
+        await WebBrowserService.OpenWebViewBrowser($"http://{Shuttle.IPAddress}/update");
+    }
+
+    private async Task OpenOtaStmUpdate()
     {
         await SendCommandAsync("FRM", "Прошивка");
-        //var result = await FilePickerService.PickFileAsync();
+        await WebBrowserService.OpenWebViewBrowser($"http://{Shuttle.IPAddress}");
     }
 
     // --- Все методы отправки команд ---
