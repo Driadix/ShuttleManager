@@ -15,7 +15,6 @@ namespace ShuttleManager.Shared.Services
         public event Action<string, string>? LogReceived;
         public event Action<string, int>? Connected;
         public event Action<string>? Disconnected;
-        //public event Action<string>? ShuttleDataUpdated; // Новое событие
         private readonly Dictionary<string, ShuttleConnection> _connections = new();
         private readonly object _lock = new object(); // Защита доступа к _connections
 
@@ -128,47 +127,11 @@ namespace ShuttleManager.Shared.Services
                 connection.Writer = new StreamWriter(connection.NetworkStream) { AutoFlush = true };
 
                 string? handshakeLine = await ReadLineAsync(connection); // Передаём NetworkStream
-                //string? handshakeLine = await ReadLineFromStreamAsync(connection.NetworkStream); // Передаём NetworkStream
-                //if (string.IsNullOrEmpty(handshakeLine))
-                //{
-                    //Debug.WriteLine($"[ShuttleHubClientService] Не получено приветствие от {ipAddress} или соединение закрыто. Старая прошивка");
-                    //await InternalDisconnectAsync(ipAddress);
-                    //return false;
-               //}
-
-                //test start
-                //Debug.WriteLine($"[ShuttleHubClientService] Получено приветствие: '{handshakeLine}'"); // Отладочный вывод
-                //if (!handshakeLine.StartsWith("CONNECTED:SHUTTLE_HUB_V1:ID="))
-                //{
-                    //Debug.WriteLine($"[ShuttleHubClientService] Неверное приветствие от {ipAddress}: {handshakeLine}. Старая версия прошивки.");
-                    //await InternalDisconnectAsync(ipAddress);
-                    //return false;
-                //}
-
-                //else
-                //{
-                //    var match = Regex.Match(handshakeLine, @"ID=(\d+)");
-                //    if (!match.Success || !int.TryParse(match.Groups[1].Value, out var parsedId))
-                //    {
-                //        Debug.WriteLine($"[ShuttleHubClientService] Не удалось извлечь или неверный ID из приветствия от {ipAddress}: {handshakeLine}");
-                //        await InternalDisconnectAsync(ipAddress);
-                //        return false;
-                //    }
-                //    connection.ShuttleId = parsedId; 
-                //}
-
-                //Debug.WriteLine($"[ShuttleHubClientService] Подключено к шаттлу ID: {connection.ShuttleId} по адресу {ipAddress}");
+                #if DEBUG
+                Debug.WriteLine($"[ShuttleHubClientService] Подключено к шаттлу ID: {connection.ShuttleId} по адресу {ipAddress}");
+                #endif
                 OnConnected(ipAddress, connection.ShuttleId);
-
-                //if (!await SendCommandInternalAsync(connection, "STREAM_START", 2000))
-                //{
-                //    //Debug.WriteLine($"[ShuttleHubClientService] Не удалось запустить стрим от {ipAddress}. Старая версия прошивки или иная пробелма.");
-                //    //await InternalDisconnectAsync(ipAddress);
-                //    //return false;
-                //}
-
-                //Debug.WriteLine($"[ShuttleHubClientService] Стрим запущен для шаттла ID: {connection.ShuttleId} ({ipAddress})");
-
+             
                 connection.ReceiveCts = new CancellationTokenSource();
                 connection.ReceiveTask = Task.Run(async () => await ReceiveLoopAsync(connection, connection.ReceiveCts.Token), connection.ReceiveCts.Token);
 
@@ -176,14 +139,11 @@ namespace ShuttleManager.Shared.Services
                 {
                     _connections[ipAddress] = connection;
                 }
-
-                //return true;
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"[ShuttleHubClientService] Ошибка подключения к {ipAddress}: {ex.Message}");
                 await InternalDisconnectAsync(ipAddress);
-                //return false;
             }
         }
 
@@ -195,11 +155,8 @@ namespace ShuttleManager.Shared.Services
                 return "start stream!";
             }
 
-
-
             const int BufferSize = 512;
             byte[] readBuffer = new byte[BufferSize];
-
 
             while (true)
             {
@@ -271,39 +228,6 @@ namespace ShuttleManager.Shared.Services
                         break;
                     }
                     OnLogReceived(connection.IpAddress, line);
-                    //const string markerTelemetry = "##TELEMETRY##:";
-                    //const string markerHeartBeat = "##HEARTBEAT##";
-                    //if (line.Contains(markerTelemetry))
-                    //{
-                    //    int startIndex = line.IndexOf(markerTelemetry) + markerTelemetry.Length;
-                    //    string jsonStr = line.Substring(startIndex);
-
-                    //    try
-                    //    {
-                    //        var telemetry = JsonNode.Parse(jsonStr);
-                    //        if (telemetry != null)
-                    //        {
-                    //            OnTelemetryReceived(connection.IpAddress, telemetry);
-                    //        }
-                    //    }
-                    //    catch (Exception ex)
-                    //    {
-                    //        OnLogReceived(connection.IpAddress, $"[ERROR] Ошибка парсинга телеметрии: {ex.Message}, строка: {jsonStr}");
-                    //    }
-                    //}
-                    //else if (line.Contains(markerHeartBeat))
-                    //{
-                    //    OnLogReceived(connection.IpAddress, line);
-                    //}
-                    //else if (line.StartsWith("ACK:") || line.StartsWith("NACK:"))
-                    //{
-                       
-                    //    Debug.WriteLine($"[ShuttleHubClientService] Получен ответ для команды от {connection.IpAddress}: {line}");
-                    //}
-                    //else
-                    //{
-                    //    OnLogReceived(connection.IpAddress, line);
-                    //}
                 }
                 catch (OperationCanceledException)
                 {
@@ -358,7 +282,6 @@ namespace ShuttleManager.Shared.Services
                 if (completedTask == delayTask)
                 {
                     cts.Dispose();
-                    // Таймаут
                     Debug.WriteLine($"[ShuttleHubClientService] Таймаут ожидания подтверждения для команды: {command} от {connection.IpAddress}");
                     return false;
                 }
@@ -387,7 +310,6 @@ namespace ShuttleManager.Shared.Services
                 }
                 else
                 {
-                    // Получили неожиданный ответ
                     Debug.WriteLine($"[ShuttleHubClientService] Неожиданный ответ при ожидании подтверждения для: {command} от {connection.IpAddress} - {response}. Потенциально старая прошивка");
                     return true;
                 }
@@ -473,8 +395,6 @@ namespace ShuttleManager.Shared.Services
    
         private void OnConnected(string ip, int id) => Connected?.Invoke(ip, id);
         private void OnDisconnected(string ip) => Disconnected?.Invoke(ip);
-        private void OnTelemetryReceived(string ip, ShuttleTelemetry telemetryShuttle) => TelemetryReceivedStruct?.Invoke(ip, telemetryShuttle);
-        private void OnTelemetryReceived(string ip, JsonNode telemetry) => TelemetryReceived?.Invoke(ip, telemetry);
         private void OnLogReceived(string ip, string log) => LogReceived?.Invoke(ip, log);
     }
 

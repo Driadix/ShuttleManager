@@ -1,12 +1,31 @@
-﻿namespace ShuttleManager;
+﻿using ShuttleManager.Services;
+
+namespace ShuttleManager;
 
 public partial class BrowserPage : ContentPage
 {
+    // Статический кэш: ключ = стартовый URL, значение = последний посещённый URL
+    private static readonly Dictionary<string, string> _urlCache = new();
+
     private readonly WebView _webView;
     private readonly ActivityIndicator _loading;
+    private readonly string _startUrl; // Сохраняем стартовый URL для кэширования
+    private string _currentUrl;
 
     public BrowserPage(string url)
     {
+        
+
+        _startUrl = url; // Запоминаем стартовый URL
+        _currentUrl = url;
+
+        // Если есть сохранённый URL — используем его
+        if (_urlCache.TryGetValue(url, out var cachedUrl))
+        {
+            _currentUrl = cachedUrl;
+            url = cachedUrl;
+        }
+
         Title = "Firmware Update";
 
         _webView = new WebView
@@ -31,8 +50,9 @@ public partial class BrowserPage : ContentPage
             _loading.IsRunning = true;
         };
 
-        _webView.Navigated += (_, __) =>
+        _webView.Navigated += (_, e) =>
         {
+            _currentUrl = e.Url; // ← ВОТ КЛЮЧЕВОЙ МОМЕНТ
             _loading.IsRunning = false;
             _loading.IsVisible = false;
         };
@@ -59,17 +79,32 @@ public partial class BrowserPage : ContentPage
 
         reloadButton.Clicked += (_, _) => _webView.Reload();
 
-        var closeButton = new Button
+        var minimizeButton = new Button
         {
-            Text = "✕",
+            Text = "—",
             FontSize = 18,
             BackgroundColor = Colors.Transparent
         };
 
-        closeButton.Clicked += async (_, _) =>
+        minimizeButton.Clicked += async (_, _) =>
         {
+            // Сохраняем ТЕКУЩИЙ URL (не из Source, а из поля)
+            _urlCache[_startUrl] = _currentUrl;
+
             if (Navigation?.ModalStack?.Any() == true)
                 await Navigation.PopModalAsync(animated: true);
+        };
+
+        var homeButton = new Button
+        {
+            Text = "⌂",
+            FontSize = 18,
+            BackgroundColor = Colors.Transparent
+        };
+
+        homeButton.Clicked += async (_, _) =>
+        {
+            _webView.Source = new UrlWebViewSource { Url = _startUrl };
         };
 
         var toolbar = new Grid
@@ -79,15 +114,17 @@ public partial class BrowserPage : ContentPage
             {
                 new ColumnDefinition(GridLength.Auto),
                 new ColumnDefinition(GridLength.Auto),
-                new ColumnDefinition(GridLength.Star),
+                new ColumnDefinition(GridLength.Auto),
+                new ColumnDefinition(GridLength.Auto),
                 new ColumnDefinition(GridLength.Auto)
             },
             BackgroundColor = Colors.LightGray
         };
 
-        toolbar.Add(backButton, 0, 0);
-        toolbar.Add(reloadButton, 1, 0);
-        toolbar.Add(closeButton, 3, 0);
+        toolbar.Add(backButton, 0);
+        toolbar.Add(reloadButton, 1);
+        toolbar.Add(homeButton,2);
+        toolbar.Add(minimizeButton, 3);
 
         var contentGrid = new Grid
         {

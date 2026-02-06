@@ -60,14 +60,8 @@ public class TcpClientService : ITcpClientService
             string? line = await reader.ReadLineAsync(cancellationToken);
             return line;
         }
-        catch (OperationCanceledException)
-        {
-            return null;
-        }
-        catch (IOException)
-        {
-            return null;
-        }
+        catch (OperationCanceledException) { return null; }
+        catch (IOException) { return null; }
     }
 
     public void Disconnect()
