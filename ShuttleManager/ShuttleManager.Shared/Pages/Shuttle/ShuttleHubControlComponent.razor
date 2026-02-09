@@ -1,15 +1,14 @@
 ﻿@using System.Diagnostics
-@using ShuttleManager.Shared.Interfaces
-@inject IJSRuntime JSRuntime
-@using System.Text.Json.Nodes
-@using Microsoft.Extensions.Logging
 @using ShuttleManager.Shared.Services
-@inject IBrowserLauncherService BrowserLauncher
+@using ShuttleManager.Shared.Services.FilePicker
+@using ShuttleManager.Shared.Services.ShuttleClient
+@using ShuttleManager.Shared.Services.WebBrowser
+@using System.Text.Json.Nodes
+@using ShuttleManager.Shared.Models
+@using Microsoft.Extensions.Logging
+@inject IJSRuntime JSRuntime
 @inject IShuttleHubClientService HubClientService
 @inject ILogger<ShuttleHubControlComponent> Logger
-@using ShuttleManager.Shared.Models
-@inject IFilePickerService FilePickerService
-@inject NavigationManager Navigation
 @inject IWebBrowserService WebBrowserService
 
 <div class="card mb-3">
@@ -134,16 +133,11 @@
                                                     <i class="bi bi-arrow-clockwise me-1"></i>⚠️display firmware
                                                 </button>
                                             </div>
-   @*                                          <div class="mb-1">
-                                                <button class="btn btn-outline-primary btn-sm w-100" @onclick="SendFRMFirmwareCommand" title="Открыть веб-интерфейс обновления прошивки">
-                                                    <i class="bi bi-cloud-arrow-up me-1"></i>Обновление прошивки платы (FRM)
-                                                </button>
-                                            </div>
                                             <div class="mb-1">
                                                 <button class="btn btn-outline-primary btn-sm w-100" @onclick="SendUpdateStateShuttleCommand" title="Применить загруженное обновление">
-                                                    <i class="bi bi-arrow-clockwise me-1"></i>Обновление прошивки экрана (UPD)
+                                                    <i class="bi bi-arrow-clockwise me-1"></i>Обновление прошивки экрана (UPD) (Browser)
                                                 </button>
-                                            </div> *@
+                                            </div>
                                             <div class="mb-1">
                                                 <button class="btn btn-outline-primary btn-sm w-100" @onclick="SetTime" title="Установить время">
                                                     <i class="bi bi-arrow-clockwise me-1"></i>Установить время
@@ -157,7 +151,11 @@
                                                     <i class="bi bi-arrow-clockwise me-1"></i>⚠️STM firmware
                                                 </button>
                                             </div>
-
+                                            <div class="mb-1">
+                                                <button class="btn btn-outline-primary btn-sm w-100" @onclick="SendFRMFirmwareCommand" title="Открыть веб-интерфейс обновления прошивки">
+                                                    <i class="bi bi-cloud-arrow-up me-1"></i>Обновление прошивки платы (FRM) (Browser)
+                                                </button>
+                                            </div>
                                             <div class="mb-1">
                                                 <button class="btn btn-outline-primary btn-sm w-100" @onclick="OpenLogsShuttle" title="Открыть логи шаттла" disabled="@(OperatingSystem.IsAndroid())">
                                                     <i class="bi bi-arrow-clockwise me-1"></i>Логи шаттла
@@ -265,8 +263,6 @@
                                     </div>
                                 </div>
                             </div>
-
-                            <!-- Параметры (новая секция) -->
                             <div class="col-12">
                                 <div class="card">
                                     <div class="card-header p-1">
@@ -274,7 +270,6 @@
                                     </div>
                                     <div class="card-body p-2">
                                         <div class="row g-1">
-                                            <!-- Номер шаттла -->
                                             <div class="col-12 mb-1">
                                                 <div class="input-group input-group-sm">
                                                     <InputNumber @bind-Value="ShuttleNumberInput" class="form-control form-control-sm" min="1" max="999" placeholder="Номер шаттла" />
@@ -283,8 +278,6 @@
                                                     </button>
                                                 </div>
                                             </div>
-
-                                            <!-- Расстояние назад -->
                                             <div class="col-12 mb-1">
                                                 <div class="input-group input-group-sm">
                                                     <InputNumber @bind-Value="MoveDistanceBackwardInput" class="form-control form-control-sm" min="0" max="10000" step="10" placeholder="Расст. назад (мм)" />
@@ -293,8 +286,6 @@
                                                     </button>
                                                 </div>
                                             </div>
-
-                                            <!-- Расстояние вперёд -->
                                             <div class="col-12 mb-1">
                                                 <div class="input-group input-group-sm">
                                                     <InputNumber @bind-Value="MoveDistanceForwardInput" class="form-control form-control-sm" min="0" max="10000" step="10" placeholder="Расст. вперёд (мм)" />
@@ -303,8 +294,6 @@
                                                     </button>
                                                 </div>
                                             </div>
-
-                                            <!-- Макс. скорость -->
                                             <div class="col-12 mb-1">
                                                 <div class="input-group input-group-sm">
                                                     <InputNumber @bind-Value="MaxSpeedInput" class="form-control form-control-sm" min="5" max="100" step="1" placeholder="Макс. скорость (%)" />
@@ -313,8 +302,6 @@
                                                     </button>
                                                 </div>
                                             </div>
-
-                                            <!-- Мин. мощность -->
                                             <div class="col-12 mb-1">
                                                 <div class="input-group input-group-sm">
                                                     <InputNumber @bind-Value="MinPowerInput" class="form-control form-control-sm" min="0" max="100" step="1" placeholder="Мин. уровень (%)" />
@@ -381,8 +368,8 @@
     private string ManualCommand { get => _manualCommand; set => _manualCommand = value; }
     private string pathLogShuttle = "";
 
-    private readonly List<string> _statusBlockLines = new(); // Для сбора строк блока статуса
-    private bool _inStatusBlock = false; // Флаг, находимся ли мы внутри блока статуса
+    private readonly List<string> _statusBlockLines = new();
+    private bool _inStatusBlock = false;
 
 
 
@@ -396,7 +383,6 @@
             }          
             HubClientService.Connected += OnHubConnected;
             HubClientService.Disconnected += OnHubDisconnected;
-            HubClientService.TelemetryReceived += OnTelemetryReceived;
             HubClientService.LogReceived += OnLogReceived;
             pathLogShuttle = Path.Combine($"{AppContext.BaseDirectory}/logs", $"Shuttle_Log_Number_{DateTime.Now.Day}_{DateTime.Now.Month}_{DateTime.Now.Year}_{Shuttle.IPAddress}.txt");
             Logger.LogInformation("Компонент инициализирован для {IpAddress}", Shuttle.IPAddress);
@@ -481,7 +467,6 @@
         var err = telemetry["err"]?.GetValue<int>() ?? 0;
         var warn = telemetry["warn"]?.GetValue<int>() ?? 0;
 
-        //Shuttle.ShuttleNumber = id;
         Shuttle.BatteryPercentage = batt;
         Shuttle.BatteryVoltage = volt;
         Shuttle.CurrentStatus = stateStr;
@@ -493,16 +478,14 @@
     {
         var line = response.Trim();
 
-        // --- Парсинг CB XX ---
         var cbMatch = System.Text.RegularExpressions.Regex.Match(line, @"^CB\s+(\d+)$");
         if (cbMatch.Success && int.TryParse(cbMatch.Groups[1].Value, out int batteryPercentageScr))
         {
             Shuttle.BatteryPercentage = batteryPercentageScr;
             Logger.LogInformation($"Parsed CB: Battery {batteryPercentageScr}%");
-            return; // Возврат, чтобы не попало в терминал дважды
+            return;
         }
 
-        // --- Парсинг Batt voltage строки ---
         var battMatch = System.Text.RegularExpressions.Regex.Match(line, @"Batt voltage = ([\d.]+)V Charge = (\d+)% limit = (\d+)%");
         if (battMatch.Success)
         {
@@ -515,19 +498,17 @@
                 Shuttle.BatteryLimit = batteryLimit;
                 Logger.LogInformation($"Parsed Batt: {batteryVoltage}V {batteryPercentage}% {batteryLimit}%");
             }
-            return; // Возврат
+            return;
         }
 
-        // --- Парсинг Inverse ---
         var inverseMatch = System.Text.RegularExpressions.Regex.Match(line, @"Inverse = (YES|NO)");
         if (inverseMatch.Success)
         {
             Shuttle.Inverse = inverseMatch.Groups[1].Value == "YES";
             Logger.LogInformation($"Parsed Inverse: {Shuttle.Inverse}");
-            return; // Возврат
+            return;
         }
 
-        // --- Парсинг Status ---
         var statusMatch = System.Text.RegularExpressions.Regex.Match(line, @"Status = (.+?)\s+\((\d+)\)");
         if (statusMatch.Success)
         {
@@ -536,41 +517,35 @@
             {
                 Shuttle.StatusCode = statusCode;
             }
-            // CurrentCommand, кажется, не из этого лога, но если нужно, можно присвоить CurrentStatus
-            // Shuttle.CurrentCommand = Shuttle.CurrentStatus;
             Logger.LogInformation($"Parsed Status: {Shuttle.CurrentStatus} ({Shuttle.StatusCode})");
-            return; // Возврат
+            return;
         }
 
-        // --- Парсинг MPR и Max Speed ---
         var mprMatch = System.Text.RegularExpressions.Regex.Match(line, @"MPR = (\d+)\s+max speed = (\d+)");
         if (mprMatch.Success)
         {
             if (int.TryParse(mprMatch.Groups[1].Value, out int interPalletDistance) &&
                 int.TryParse(mprMatch.Groups[2].Value, out int maxSpeed))
             {
-                Shuttle.InterPalleteDistance = interPalletDistance; // Используем как MPR
-                Shuttle.MaxSpeed = maxSpeed; // Текущая max speed из статуса
+                Shuttle.InterPalleteDistance = interPalletDistance;
+                Shuttle.MaxSpeed = maxSpeed;
                 Logger.LogInformation($"Parsed MPR/MaxSp: MPR={interPalletDistance}, MaxSp={maxSpeed}");
             }
-            return; // Возврат
+            return;
         }
 
-        // --- Парсинг Shuttle Number и Length ---
         var shuttleMatch = System.Text.RegularExpressions.Regex.Match(line, @"Shuttle number = (\d+)\s+Shuttle length = (\d+)");
         if (shuttleMatch.Success)
         {
             if (int.TryParse(shuttleMatch.Groups[1].Value, out int shuttleNumber) &&
                 int.TryParse(shuttleMatch.Groups[2].Value, out int shuttleLength))
             {
-                //Shuttle.ShuttleNumber = shuttleNumber.ToString(); // Предполагаем, что в модели это строка
                 Shuttle.ShuttleLength = shuttleLength;
                 Logger.LogInformation($"Parsed Shuttle: Num={Shuttle.ShuttleNumber}, Len={shuttleLength}");
             }
-            return; // Возврат
+            return;
         }
 
-        // --- Парсинг Temperature ---
         var tempMatch = System.Text.RegularExpressions.Regex.Match(line, @"Temperature = ([\d.]+)");
         if (tempMatch.Success)
         {
@@ -579,10 +554,9 @@
                 Shuttle.Temperature = temperature;
                 Logger.LogInformation($"Parsed Temp: {temperature}°C");
             }
-            return; // Возврат
+            return;
         }
 
-        // --- Парсинг Angle, Length, Position ---
         var angleMatch = System.Text.RegularExpressions.Regex.Match(line, @"Angle = (\d+)\s*\|\s*Lenght = (\d+)\s*\|\s*position = (\d+)");
         if (angleMatch.Success)
         {
@@ -591,23 +565,21 @@
                 int.TryParse(angleMatch.Groups[3].Value, out int position))
             {
                 Shuttle.Angle = angle;
-                Shuttle.Length = length; // Проверьте, может быть конфликт с длиной шаттла?
+                Shuttle.Length = length;
                 Shuttle.Position = position;
                 Logger.LogInformation($"Parsed Angle/Length/Pos: {angle}/{length}/{position}");
             }
-            return; // Возврат
+            return;
         }
 
-        // --- Парсинг FIFO/LIFO ---
         var fifoLifoMatch = System.Text.RegularExpressions.Regex.Match(line, @"FIFO_LIFO = (FIFO|LIFO)");
         if (fifoLifoMatch.Success)
         {
             Shuttle.FifoLifoMode = fifoLifoMatch.Groups[1].Value;
             Logger.LogInformation($"Parsed FIFO/LIFO: {Shuttle.FifoLifoMode}");
-            return; // Возврат
+            return;
         }
 
-        // --- Парсинг Forward/Reverse Distances ---
         var distMatch = System.Text.RegularExpressions.Regex.Match(line, @"Forwrd dist = (\d+)\s*\|\s*Revrs dist = (\d+)");
         if (distMatch.Success)
         {
@@ -618,10 +590,9 @@
                 Shuttle.ReverseDistance = reverseDist;
                 Logger.LogInformation($"Parsed Dist F/R: {forwardDist}/{reverseDist}");
             }
-            return; // Возврат
+            return;
         }
 
-        // --- Парсинг Forward/Reverse Pallet Distances ---
         var pltDistMatch = System.Text.RegularExpressions.Regex.Match(line, @"Forwrd plt dist = (\d+)\s*\|\s*Revrs plt dist = (\d+)");
         if (pltDistMatch.Success)
         {
@@ -632,14 +603,13 @@
                 Shuttle.ReversePalletDistance = reversePalletDist;
                 Logger.LogInformation($"Parsed Pallet Dist F/R: {forwardPalletDist}/{reversePalletDist}");
             }
-            return; // Возврат
+            return;
         }
 
-        // --- Парсинг Pallet Detectors ---
         var pltDetMatch = System.Text.RegularExpressions.Regex.Match(line, @"Plt dtchk (F1|R1) = (\d+)\s*\|\s*Plt dtchk (F2|R2) = (\d+)");
         if (pltDetMatch.Success)
         {
-            string side = pltDetMatch.Groups[1].Value.Substring(0, 1); // F или R
+            string side = pltDetMatch.Groups[1].Value.Substring(0, 1);
             if (int.TryParse(pltDetMatch.Groups[2].Value, out int detector1) &&
                 int.TryParse(pltDetMatch.Groups[4].Value, out int detector2))
             {
@@ -648,36 +618,33 @@
                     Shuttle.PalletDetectorFront1 = detector1;
                     Shuttle.PalletDetectorFront2 = detector2;
                 }
-                else if (side == "R") // side == "R"
+                else if (side == "R")
                 {
                     Shuttle.PalletDetectorRear1 = detector1;
                     Shuttle.PalletDetectorRear2 = detector2;
                 }
                 Logger.LogInformation($"Parsed Pallet Det {side}: {detector1}/{detector2}");
             }
-            return; // Возврат
+            return;
         }
 
-        // --- Парсинг In Channel ---
         var inChanMatch = System.Text.RegularExpressions.Regex.Match(line, @"In channel:\s+(YES|NO)");
         if (inChanMatch.Success)
         {
             Shuttle.IsInChannel = inChanMatch.Groups[1].Value == "YES";
             Logger.LogInformation($"Parsed In Channel: {Shuttle.IsInChannel}");
-            return; // Возврат
+            return;
         }
 
-        // --- Парсинг Lifter ---
         var lifterMatch = System.Text.RegularExpressions.Regex.Match(line, @"Lifter UP:\s+(YES|NO)\s*\|\s*Lifter DOWN:\s+(YES|NO)");
         if (lifterMatch.Success)
         {
             Shuttle.IsLifterUp = lifterMatch.Groups[1].Value == "YES";
             Shuttle.IsLifterDown = lifterMatch.Groups[2].Value == "YES";
             Logger.LogInformation($"Parsed Lifter: UP={Shuttle.IsLifterUp}, DOWN={Shuttle.IsLifterDown}");
-            return; // Возврат
+            return;
         }
 
-        // --- Парсинг Bumpers ---
         var bumperMatch = System.Text.RegularExpressions.Regex.Match(line, @"Bumper forward = (\d+)\s*\|\s*Bumper reverse = (\d+)");
         if (bumperMatch.Success)
         {
@@ -688,10 +655,9 @@
                 Shuttle.BumperReverse = bumperReverse;
                 Logger.LogInformation($"Parsed Bumper F/R: {bumperForward}/{bumperReverse}");
             }
-            return; // Возврат
+            return;
         }
 
-        // --- Парсинг Zero Point MPR и Channel Offset ---
         var zeroOffMatch = System.Text.RegularExpressions.Regex.Match(line, @"Zero point MPR = (\d+)\s+channel offset = (\d+)");
         if (zeroOffMatch.Success)
         {
@@ -702,10 +668,9 @@
                 Shuttle.ChannelOffset = channelOffset;
                 Logger.LogInformation($"Parsed Zero/Offset: {zeroPointMpr}/{channelOffset}");
             }
-            return; // Возврат
+            return;
         }
 
-        // --- Парсинг Wait Time Unload ---
         var waitTimeMatch = System.Text.RegularExpressions.Regex.Match(line, @"Wait time on unload = (\d+)\s+Sec");
         if (waitTimeMatch.Success)
         {
@@ -714,7 +679,7 @@
                 Shuttle.WaitTimeUnload = waitTime;
                 Logger.LogInformation($"Parsed Wait Time: {waitTime}s");
             }
-            return; // Возврат
+            return;
         }
     }
 
@@ -724,13 +689,9 @@
         if (!IsEventForThisShuttle(ip)) return;
 
         File.AppendAllText(pathLogShuttle, $"[{DateTime.Now}] {log}\n");
-
         await InvokeAsync(() =>
         {
-            // --- Парсинг строки (вызывается для каждой строки) ---
             ParseAndHandleResponse(log);
-
-            // --- Обработка блока статуса (для внутреннего использования, например, FullStatusBlock) ---
             if (log.StartsWith("-----------------------------------------------"))
             {
                 if (!_inStatusBlock)
@@ -741,28 +702,17 @@
                 else
                 {
                     _inStatusBlock = false;
-                    Shuttle.FullStatusBlock = string.Join("\n", _statusBlockLines); // Сохраняем блок, если нужно
+                    Shuttle.FullStatusBlock = string.Join("\n", _statusBlockLines);
                 }
             }
-            else if (_inStatusBlock)
-            {
-                _statusBlockLines.Add(log);
-            }
-
-            // --- ОРИГИНАЛЬНАЯ ЛОГИКА ДОБАВЛЕНИЯ В ТЕРМИНАЛ ---
-            if (log.Contains("##HEARTBEAT##"))
-            {
-                LogToTerminal($"[HEARTBEAT] {log}\n");
-            }
+            else if (_inStatusBlock) _statusBlockLines.Add(log);
+            if (log.Contains("##HEARTBEAT##")) LogToTerminal($"[HEARTBEAT] {log}\n");
             else
             {
                 var cleanLog = log.Contains("##TELEMETRY##") ? log.Substring(0, log.IndexOf("##TELEMETRY##")) : log;
-                // ВСЕ остальные строки, включая "online...", "CB XX", и строки статуса, идут в терминал
                 LogToTerminal($"[{DateTime.Now}] {cleanLog}\n");
             }
-
-            // --- Обновление UI ---
-            StateHasChanged(); // Обновляем UI после изменения данных Shuttle
+            StateHasChanged();
         });
     }
 
@@ -807,43 +757,8 @@
         }
     }
 
-    private async Task SendSetShuttleNumCommand()
-    {
-        await SendCommandAsync($"{Shuttle.ShuttleNumber}dNN{ShuttleNumberInput}", $"Установка номера шаттла: {ShuttleNumberInput}");
-    }
 
-    private async Task SendSetMoveReverseShuttleCommand()
-    {
-        await SendCommandAsync($"{Shuttle.ShuttleNumber}dMf{MoveDistanceBackwardInput}", $"Проезд расстояния назад: {MoveDistanceBackwardInput} мм");
-    }
-
-    private async Task SendMoveForwardShuttleCommand()
-    {
-        await SendCommandAsync($"{Shuttle.ShuttleNumber}dMr{MoveDistanceForwardInput}", $"Проезд расстояния вперёд: {MoveDistanceForwardInput} мм");
-    }
-
-    private async Task SendSetMaxSpeedShuttleCommand()
-    {
-        await SendCommandAsync($"{Shuttle.ShuttleNumber}dSp{MaxSpeedInput}", $"Установка максимальной скорости: {MaxSpeedInput}%");
-    }
-
-    //TODO - уровень защиты батареи.
-    private async Task SendSetMinPowerShuttleCommand()
-    {
-        await SendCommandAsync($"{Shuttle.ShuttleNumber}dBc{MinPowerInput}", $"Установка лимита батареи: {MinPowerInput}%");
-    }
-
-    private async Task SendSetPalletBetweenDistanceShuttleCommand()
-    {
-        await SendCommandAsync($"{Shuttle.ShuttleNumber}dDm{PallentDistance}", $"Установка межпаллетного расстояния: {PallentDistance}%");
-    }
-
-    private async Task SetTime()
-    {
-        DateTime currentTime = DateTime.Now;
-        string command = $"DT {currentTime:HH:mm:ss dd/MM/yyyy}";
-        await SendCommandAsync(command);
-    }
+    
 
     private async Task OpenLogsShuttle()
     {
@@ -867,7 +782,6 @@
         await WebBrowserService.OpenWebViewBrowser($"http://{Shuttle.IPAddress}");
     }
 
-    // --- Все методы отправки команд ---
     private async Task SendStopCommand() => await SendCommandAsync($"{Shuttle.ShuttleNumber}dStop_", "Остановка");
     private async Task SendLoadCommand() => await SendCommandAsync($"{Shuttle.ShuttleNumber}dLoad_", "Загрузка");
     private async Task SendLargeLoadCommand() => await SendCommandAsync($"{Shuttle.ShuttleNumber}dLLoad", "Длительная загрузка");
@@ -894,8 +808,20 @@
 
     private async Task SendFRMFirmwareCommand() => await SendUpdateCommandAndOpenBrowser();
     private async Task SendUpdateStateShuttleCommand() => await SendUPDCommandAndOpenBrowser();
-
     private async Task SendRebootShuttleCommand() => await SendCommandAsync("RBT", "Reboot shuttle");
+
+    private async Task SendSetShuttleNumCommand() => await SendCommandAsync($"{Shuttle.ShuttleNumber}dNN{ShuttleNumberInput}", $"Установка номера шаттла: {ShuttleNumberInput}");
+    private async Task SendSetMoveReverseShuttleCommand() => await SendCommandAsync($"{Shuttle.ShuttleNumber}dMf{MoveDistanceBackwardInput}", $"Проезд расстояния назад: {MoveDistanceBackwardInput} мм");
+    private async Task SendMoveForwardShuttleCommand() => await SendCommandAsync($"{Shuttle.ShuttleNumber}dMr{MoveDistanceForwardInput}", $"Проезд расстояния вперёд: {MoveDistanceForwardInput} мм");
+    private async Task SendSetMaxSpeedShuttleCommand() => await SendCommandAsync($"{Shuttle.ShuttleNumber}dSp{MaxSpeedInput}", $"Установка максимальной скорости: {MaxSpeedInput}%");
+    private async Task SendSetMinPowerShuttleCommand() => await SendCommandAsync($"{Shuttle.ShuttleNumber}dBc{MinPowerInput}", $"Установка уровня защиты батареи: {MinPowerInput}%");
+    private async Task SendSetPalletBetweenDistanceShuttleCommand() => await SendCommandAsync($"{Shuttle.ShuttleNumber}dDm{PallentDistance}", $"Установка межпаллетного расстояния: {PallentDistance}%");
+    private async Task SetTime()
+    {
+        DateTime currentTime = DateTime.Now;
+        string command = $"DT {currentTime:HH:mm:ss dd/MM/yyyy}";
+        await SendCommandAsync(command);
+    }
 
     private async Task SendUpdateCommandAndOpenBrowser()
     {
@@ -919,7 +845,7 @@
         try
         {
             var uri = new Uri(url);
-            await BrowserLauncher.OpenBrowserAsync(uri);
+            await WebBrowserService.OpenBrowserAsync(uri);
             LogToTerminal($"[INFO] Открыт веб-интерфейс: {url}\n");
         }
         catch (Exception ex)
@@ -1039,7 +965,6 @@
 
         HubClientService.Connected -= OnHubConnected;
         HubClientService.Disconnected -= OnHubDisconnected;
-        HubClientService.TelemetryReceived -= OnTelemetryReceived;
         HubClientService.LogReceived -= OnLogReceived;
     }
 }

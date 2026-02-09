@@ -1,22 +1,19 @@
-﻿using ShuttleManager.Shared.Interfaces;
-using ShuttleManager.Shared.Models;
+﻿using ShuttleManager.Shared.Models;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 
-namespace ShuttleManager.Shared.Services
+namespace ShuttleManager.Shared.Services.ShuttleClient
 {
     public class ShuttleHubClientService : IShuttleHubClientService, IDisposable
     {
-        public event Action<string, JsonNode>? TelemetryReceived;
-        public event Action<string, ShuttleTelemetry>? TelemetryReceivedStruct;
         public event Action<string, string>? LogReceived;
         public event Action<string, int>? Connected;
         public event Action<string>? Disconnected;
-        private readonly Dictionary<string, ShuttleConnection> _connections = new();
-        private readonly object _lock = new object(); // Защита доступа к _connections
+        private readonly Dictionary<string, ShuttleConnection> _connections = [];
+        private readonly object _lock = new();
 
         private class ShuttleConnection
         {
@@ -102,14 +99,7 @@ namespace ShuttleManager.Shared.Services
 
         public async Task ConnectToShuttleAsync(string ipAddress, int port)
         {
-            lock (_lock)
-            {
-                //if (_connections.ContainsKey(ipAddress))
-                //{
-                //    Debug.WriteLine($"[ShuttleHubClientService] Уже подключено к {ipAddress}");
-                //    return false;
-                //}
-            }
+            lock (_lock) {}
 
             var connection = new ShuttleConnection { IpAddress = ipAddress };
 
@@ -126,10 +116,7 @@ namespace ShuttleManager.Shared.Services
                 connection.NetworkStream = connection.TcpClient.GetStream();
                 connection.Writer = new StreamWriter(connection.NetworkStream) { AutoFlush = true };
 
-                string? handshakeLine = await ReadLineAsync(connection); // Передаём NetworkStream
-                #if DEBUG
-                Debug.WriteLine($"[ShuttleHubClientService] Подключено к шаттлу ID: {connection.ShuttleId} по адресу {ipAddress}");
-                #endif
+                string? handshakeLine = await ReadLineAsync(connection);
                 OnConnected(ipAddress, connection.ShuttleId);
              
                 connection.ReceiveCts = new CancellationTokenSource();
@@ -160,37 +147,28 @@ namespace ShuttleManager.Shared.Services
 
             while (true)
             {
-                // Ищем символ новой строки в уже имеющемся буфере
                 byte[] currentBufferData = connection.ReceiveBuffer.ToArray();
                 int newlineIndex = Array.IndexOf(currentBufferData, (byte)'\n');
 
                 if (newlineIndex >= 0)
                 {
-                    // Нашли \n — извлекаем строку
                     string line = System.Text.Encoding.UTF8.GetString(currentBufferData, 0, newlineIndex);
-                    // Удаляем из буфера всё до и включая \n
                     connection.ReceiveBuffer.SetLength(0);
                     if (newlineIndex + 1 < currentBufferData.Length)
                     {
                         connection.ReceiveBuffer.Write(currentBufferData, newlineIndex + 1, currentBufferData.Length - newlineIndex - 1);
                     }
-
-                    // Убираем \r в конце, если есть (Windows-стиль)
                     if (line.Length > 0 && line[^1] == '\r')
                         line = line[..^1];
 
                     return line;
                 }
-
-                // \n не найден — читаем ещё данных
                 int bytesRead = await connection.NetworkStream!.ReadAsync(readBuffer, 0, readBuffer.Length, cancellationToken);
                 if (bytesRead == 0)
                 {
-                    // Соединение закрыто
                     if (connection.ReceiveBuffer.Length == 0)
-                        return null; // Нет данных — конец потока
+                        return null;
 
-                    // Есть недочитанная строка без \n — возвращаем как есть
                     string partialLine = System.Text.Encoding.UTF8.GetString(connection.ReceiveBuffer.ToArray());
                     connection.ReceiveBuffer.SetLength(0);
                     if (partialLine.Length > 0 && partialLine[^1] == '\r')
@@ -198,15 +176,12 @@ namespace ShuttleManager.Shared.Services
                     return partialLine;
                 }
 
-                // Добавляем прочитанное в буфер
                 connection.ReceiveBuffer.Write(readBuffer, 0, bytesRead);
-
-                // Защита от слишком большой строки (например, 10 КБ)
                 if (connection.ReceiveBuffer.Length > 4096)
                 {
                     Debug.WriteLine($"[ShuttleHubClientService] Слишком длинная строка (>4KB), сброс буфера");
                     connection.ReceiveBuffer.SetLength(0);
-                    return string.Empty; // или null, или исключение
+                    return string.Empty;
                 }
             }
         }

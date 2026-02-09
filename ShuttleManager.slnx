@@ -1,11 +1,6 @@
 <Solution>
-  <Folder Name="/Solution Items/">
-    <File Path=".editorconfig" />
-  </Folder>
   <Project Path="ShuttleManager/ShuttleManager.Shared/ShuttleManager.Shared.csproj" />
-  <Project Path="ShuttleManager/ShuttleManager.Web.Client/ShuttleManager.Web.Client.csproj" />
-  <Project Path="ShuttleManager/ShuttleManager.Web/ShuttleManager.Web.csproj" />
   <Project Path="ShuttleManager/ShuttleManager/ShuttleManager.csproj">
-    <Deploy Solution="Debug|*" />
+    <Deploy />
   </Project>
 </Solution>

@@ -1,10 +1,13 @@
-﻿using ShuttleManager.Shared.Interfaces;
+﻿using Microsoft.Maui.Controls.PlatformConfiguration;
+using ShuttleManager.Shared.Services.WebBrowser;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
 
 namespace ShuttleManager.Services;
 
 public class WebBrowserService : IWebBrowserService
 {
-    public static WebBrowserService Instance { get; private set; }
+    public static WebBrowserService Instance { get; private set; } = new WebBrowserService();
 
     public WebBrowserService()
     {
@@ -13,10 +16,10 @@ public class WebBrowserService : IWebBrowserService
 
     public async Task OpenWebViewBrowser(string url)
     {
-        var page = new BrowserPage(url); // ← 1 параметр, как сейчас
+        var page = new BrowserPage(url);
         await MainThread.InvokeOnMainThreadAsync(async () =>
         {
-            await Application.Current.MainPage.Navigation.PushModalAsync(page);
+            await Application.Current.Windows[0].Page.Navigation.PushModalAsync(page);
         });
     }
 
@@ -24,11 +27,45 @@ public class WebBrowserService : IWebBrowserService
     {
         await MainThread.InvokeOnMainThreadAsync(async () =>
         {
-            if (Application.Current?.MainPage?.Navigation.ModalStack?.Any() == true)
+            if (Application.Current?.Windows[0]?.Navigation.ModalStack?.Any() == true)
             {
-                await Application.Current.MainPage.Navigation.PopModalAsync(animated: true);
+                await Application.Current.Windows[0].Page.Navigation.PopModalAsync(animated: true);
             }
         });
+    }
+
+
+    public async Task OpenBrowserAsync(Uri uri)
+    {
+        if (uri == null)
+        {
+            Console.WriteLine("[DesktopBrowserLauncherService] URI is null.");
+            return;
+        }
+        string url = uri.ToString();
+        try
+        {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                Process.Start(new ProcessStartInfo("cmd", $"/c start \"\" \"{url}\"") { CreateNoWindow = true });
+            }
+            else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+            {
+                Process.Start("xdg-open", url);
+            }
+            else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            {
+                Process.Start("open", url);
+            }
+            else
+            {
+                Console.WriteLine($"[DesktopBrowserLauncherService] Unsupported OS platform for opening browser: {RuntimeInformation.OSDescription}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[DesktopBrowserLauncherService] Error opening browser: {ex.Message}");
+        }
     }
 }
 

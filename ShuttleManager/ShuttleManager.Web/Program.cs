@@ -1,5 +1,5 @@
-using ShuttleManager.Shared.Interfaces;
-using ShuttleManager.Shared.Services;
+using ShuttleManager.Shared.Services.ShuttleClient;
+using ShuttleManager.Shared.Services.TcpOfClient;
 using ShuttleManager.Web.Components;
 
 var builder = WebApplication.CreateBuilder(args);

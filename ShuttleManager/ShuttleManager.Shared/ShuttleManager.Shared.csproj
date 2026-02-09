@@ -16,7 +16,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Update="Interfaces\IFilePickerService.cs">
+    <Compile Update="Services\FilePicker\IFilePickerService.cs">
       <ExcludeFromCurrentConfiguration>true</ExcludeFromCurrentConfiguration>
     </Compile>
   </ItemGroup>
