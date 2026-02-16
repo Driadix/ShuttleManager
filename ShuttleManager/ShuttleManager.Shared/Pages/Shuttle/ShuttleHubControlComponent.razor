@@ -1,6 +1,7 @@
 ﻿@using System.Diagnostics
 @using ShuttleManager.Shared.Services
 @using ShuttleManager.Shared.Services.FilePicker
+@using ShuttleManager.Shared.Services.OtaUpdate
 @using ShuttleManager.Shared.Services.ShuttleClient
 @using ShuttleManager.Shared.Services.WebBrowser
 @using System.Text.Json.Nodes
@@ -10,6 +11,8 @@
 @inject IShuttleHubClientService HubClientService
 @inject ILogger<ShuttleHubControlComponent> Logger
 @inject IWebBrowserService WebBrowserService
+@inject IFilePickerService FilePickerService
+@inject IOtaUpdateService OtaService
 
 <div class="card mb-3">
     <div class="card-header d-flex justify-content-between align-items-center">
@@ -143,6 +146,7 @@
                                                     <i class="bi bi-arrow-clockwise me-1"></i>Установить время
                                                 </button>
                                             </div>
+
                                            
                                         </div>
                                         <div class="col-6">
@@ -233,7 +237,10 @@
                                                 </button>
                                             </div>
                                             <div class="col-4 mb-1">
-                                                <button class="btn btn-warning btn-sm w-100 p-2" @onclick="SendSetMoveReverseShuttleCommand" title="Реверс" disabled>
+                                                <button class="btn btn-warning btn-sm w-100 p-2"
+                                                        style="background-color: @(isReversed ? "green" : "red");"
+                                                        @onclick="SendReverseShuttleCommand"
+                                                        title="Реверс">
                                                     <i class="bi bi-download me-1"></i>Реверс 🔄
                                                 </button>
                                             </div>
@@ -273,7 +280,7 @@
                                             <div class="col-12 mb-1">
                                                 <div class="input-group input-group-sm">
                                                     <InputNumber @bind-Value="ShuttleNumberInput" class="form-control form-control-sm" min="1" max="999" placeholder="Номер шаттла" />
-                                                    <button class="btn btn-secondary btn-sm w-75" value="1" @onclick="SendSetShuttleNumCommand" title="Установить номер шаттла">
+                                                    <button class="btn btn-secondary btn-sm w-75" value="3" @onclick="SendSetShuttleNumCommand" title="Установить номер шаттла">
                                                         Установить номер шаттла
                                                     </button>
                                                 </div>
@@ -326,7 +333,40 @@
                                         </div>
                                     </div>
                                 </div>
-                            </div>                            
+                            </div>  
+                            
+                            <div class="col-12">
+                                <div class="card">
+                                    <div class="card-header p-1">
+                                        <h6 class="fw-bold text-muted mb-0">Параметры</h6>
+                                    </div>
+                                    <div class="card-body p-2">
+                                        <button @onclick="ChoiceFile">Select .bin</button>
+
+                                        @if (_selectedFile != null)
+                                        {
+                                            <p>@_selectedFile</p>
+
+                                            <button disabled="@_isOtaRunning" @onclick="() => StartOta(OtaTarget.Stm32)">
+                                                Update STM
+                                            </button>
+
+                                            <button disabled="@_isOtaRunning" @onclick="() => StartOta(OtaTarget.Esp32)">
+                                                Update ESP
+                                            </button>
+                                        }
+
+                                        @if (_isOtaRunning)
+                                        {
+                                            <progress value="@_otaPercent" max="100"></progress>
+                                            <p>@_otaPercent %</p>
+                                            <button @onclick="CancelOta">Cancel</button>
+                                        }
+
+                                        <p>@_otaStatus</p>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -345,6 +385,7 @@
     private int MaxSpeedInput = 0;
     private int MinPowerInput = 0; 
     private int PallentDistance = 0;
+    private string NameOfFirmware = "";
     private bool isAndroid => OperatingSystem.IsAndroid();
 
     private string _terminalOutputHtml = "";
@@ -371,7 +412,13 @@
     private readonly List<string> _statusBlockLines = new();
     private bool _inStatusBlock = false;
 
-
+    //Ota Update
+    private string? _selectedFile;
+    private int _otaPercent;
+    private bool _isOtaRunning;
+    private string _otaStatus = "";
+    private CancellationTokenSource? _otaCts;
+    //Ota Update
 
     protected override async Task OnInitializedAsync()
     {
@@ -393,6 +440,54 @@
             Logger.LogError(ex, "Ошибка инициализации компонента для {IpAddress}", Shuttle.IPAddress);
             LogToTerminal($"[ERROR] Ошибка инициализации: {ex.Message}\n");
         }
+    }
+
+    private async Task StartOta(OtaTarget target)
+    {
+        if (_selectedFile == null)
+            return;
+
+        _isOtaRunning = true;
+        _otaPercent = 0;
+        _otaStatus = "Starting OTA...";
+        _otaCts = new CancellationTokenSource();
+
+        var progress = new Progress<OtaProgress>(p =>
+        {
+            _otaPercent = p.Percent;
+            InvokeAsync(StateHasChanged);
+        });
+
+        try
+        {
+            // // читаем файл в массив байт
+            // byte[] firmwareBytes = await File.ReadAllBytesAsync(_selectedFile);
+
+            var result = await OtaService.RunAsync(
+                Shuttle.IPAddress!,
+                _selectedFile,
+                target,
+                progress,
+                _otaCts.Token
+            );
+
+            _otaStatus = result.IsSuccess ? "OTA Completed" : $"Error: {result.Error}";
+        }
+        catch (Exception ex)
+        {
+            _otaStatus = $"Error: {ex.Message}";
+            Logger.LogError(ex, "Ошибка OTA для {IpAddress}", Shuttle.IPAddress);
+        }
+        finally
+        {
+            _isOtaRunning = false;
+            StateHasChanged();
+        }
+    }
+
+    private void CancelOta()
+    {
+        _otaCts?.Cancel();
     }
 
     private string SeeCorrentNumberShuttle (string numberShuttle)
@@ -758,7 +853,7 @@
     }
 
 
-    
+
 
     private async Task OpenLogsShuttle()
     {
@@ -800,6 +895,19 @@
     private async Task SendUseReverseModeShuttleCommand() => await SendCommandAsync($"{Shuttle.ShuttleNumber}dRevOn", "Реверс режим");
     private async Task SendSealingForwardShuttleCommand() => await SendCommandAsync($"{Shuttle.ShuttleNumber}dComFo", "Уплотнение вперед");
     private async Task SendSealingBackShuttleCommand() => await SendCommandAsync($"{Shuttle.ShuttleNumber}dComBa", "Уплотнение назад");
+
+    private bool isReversed = false;
+    private async Task SendReverseShuttleCommand()
+    {
+        if (!isReversed)
+        {
+            isReversed = true;
+            await SendCommandAsync($"{Shuttle.ShuttleNumber}dRevOn", "Реверс режим on");
+        }
+        else
+        { await SendCommandAsync($"{Shuttle.ShuttleNumber}dReOff", "Реверс режим off"); isReversed = false; }
+
+    }
 
     private async Task SendUpShuttleCommand() => await SendCommandAsync($"{Shuttle.ShuttleNumber}dUp___", "Подъём");
     private async Task SendLeftShuttleCommand() => await SendCommandAsync($"{Shuttle.ShuttleNumber}dLeft_", "движение назад");
@@ -884,7 +992,7 @@
             LogToTerminal("[INFO] Запрошено отключение\n");
             await OnDisconnected.InvokeAsync(Shuttle.IPAddress);
         }
-        
+
     }
 
     private void ClearTerminal()
@@ -955,6 +1063,11 @@
         _ => "text-secondary"
     };
 
+    private async Task ChoiceFile()
+    {
+        var file = await FilePickerService.PickFileAsync();
+        _selectedFile = file!.FilePath;
+    }
 
     public void Dispose()
     {

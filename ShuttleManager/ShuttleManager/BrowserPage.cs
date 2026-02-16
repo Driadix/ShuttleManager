@@ -4,22 +4,22 @@ namespace ShuttleManager;
 
 public partial class BrowserPage : ContentPage
 {
-    // Статический кэш: ключ = стартовый URL, значение = последний посещённый URL
+
     private static readonly Dictionary<string, string> _urlCache = new();
 
     private readonly WebView _webView;
     private readonly ActivityIndicator _loading;
-    private readonly string _startUrl; // Сохраняем стартовый URL для кэширования
+    private readonly string _startUrl;
     private string _currentUrl;
 
     public BrowserPage(string url)
     {
         
 
-        _startUrl = url; // Запоминаем стартовый URL
+        _startUrl = url;
         _currentUrl = url;
 
-        // Если есть сохранённый URL — используем его
+
         if (_urlCache.TryGetValue(url, out var cachedUrl))
         {
             _currentUrl = cachedUrl;
@@ -52,7 +52,7 @@ public partial class BrowserPage : ContentPage
 
         _webView.Navigated += (_, e) =>
         {
-            _currentUrl = e.Url; // ← ВОТ КЛЮЧЕВОЙ МОМЕНТ
+            _currentUrl = e.Url;
             _loading.IsRunning = false;
             _loading.IsVisible = false;
         };
@@ -88,7 +88,6 @@ public partial class BrowserPage : ContentPage
 
         minimizeButton.Clicked += async (_, _) =>
         {
-            // Сохраняем ТЕКУЩИЙ URL (не из Source, а из поля)
             _urlCache[_startUrl] = _currentUrl;
 
             if (Navigation?.ModalStack?.Any() == true)
