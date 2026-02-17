@@ -21,12 +21,12 @@ namespace ShuttleManager.WinUI
         public App()
         {
             // Попытка перехватить необработанные исключения
-            AppDomain.CurrentDomain.UnhandledException += (sender, args) => {
+            AppDomain.CurrentDomain.UnhandledException += (sender, args) =>
+            {
                 var exception = args.ExceptionObject as Exception;
                 Console.WriteLine($"[CRITICAL] Unhandled Exception: {exception?.Message}");
                 // Здесь можно записать ошибку в файл или отправить в аналитику
             };
-
 
             this.InitializeComponent();
         }
@@ -37,12 +37,10 @@ namespace ShuttleManager.WinUI
         {
             base.OnLaunched(args);
 
-
-
             var window = (Application.Windows.FirstOrDefault() as Microsoft.Maui.Controls.Window);
             if (window != null)
             {
-                window.Title = "[MICRON] Менеджер шаттлов";
+                window.Title = "[MICRON] Менеджер шаттлов S.V.2";
                 var nativeWindow = window.Handler.PlatformView as Microsoft.UI.Xaml.Window;
                 if (nativeWindow != null)
                 {
@@ -52,7 +50,7 @@ namespace ShuttleManager.WinUI
 
                     if (appWindow != null)
                     {
-                        appWindow.Title = "[MICRON] Менеджер шаттлов";
+                        appWindow.Title = "[MICRON] Менеджер шаттлов S.V.2";
                         // Устанавливаем размер окна
                         //appWindow.Resize(new Windows.Graphics.SizeInt32(3840, 2160));
                         //appWindow.Resize(new Windows.Graphics.SizeInt32(1920, 1080));
@@ -66,10 +64,8 @@ namespace ShuttleManager.WinUI
                             presenter.IsMinimizable = true;
                         }
                     }
-
                 }
             }
         }
     }
-
 }

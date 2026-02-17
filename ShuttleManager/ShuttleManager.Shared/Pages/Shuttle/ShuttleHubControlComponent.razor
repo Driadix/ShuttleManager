@@ -927,13 +927,15 @@
     private async Task SendUpdateStateShuttleCommand() => await SendUPDCommandAndOpenBrowser();
     private async Task SendRebootShuttleCommand() => await SendCommandAsync("RBT", "Reboot shuttle");
 
-    private async Task SendSetShuttleNumCommand() => await SendCommandAsync($"{Shuttle.ShuttleNumber}dNN{ShuttleNumberInput}", $"Установка номера шаттла: {ShuttleNumberInput}");
+    private async Task SendSetShuttleNumCommand()
+    {
+        await SendCommandAsync($"{Shuttle.ShuttleNumber}dNN{ShuttleNumberInput}", $"Установка номера шаттла: {ShuttleNumberInput}");
+    }
     private async Task SendSetMoveReverseShuttleCommand() => await SendCommandAsync($"{Shuttle.ShuttleNumber}dMf{MoveDistanceBackwardInput}", $"Проезд расстояния назад: {MoveDistanceBackwardInput} мм");
     private async Task SendMoveForwardShuttleCommand() => await SendCommandAsync($"{Shuttle.ShuttleNumber}dMr{MoveDistanceForwardInput}", $"Проезд расстояния вперёд: {MoveDistanceForwardInput} мм");
     private async Task SendSetMaxSpeedShuttleCommand() => await SendCommandAsync($"{Shuttle.ShuttleNumber}dSp{MaxSpeedInput}", $"Установка максимальной скорости: {MaxSpeedInput}%");
     private async Task SendSetMinPowerShuttleCommand() => await SendCommandAsync($"{Shuttle.ShuttleNumber}dBc{MinPowerInput}", $"Установка уровня защиты батареи: {MinPowerInput}%");
     private async Task SendSetPalletBetweenDistanceShuttleCommand() => await SendCommandAsync($"{Shuttle.ShuttleNumber}dDm{PallentDistance}", $"Установка межпаллетного расстояния: {PallentDistance}%");
-
 
     private async Task SendSetDistanceOfEdgeShuttleCommand() => await SendCommandAsync($"{Shuttle.ShuttleNumber}dMс{DistanceOfEdge}", $"Установка расстояния от края: {DistanceOfEdge} мм");
     private async Task SendSetlenghtOfShuttleCommand() => await SendCommandAsync($"{Shuttle.ShuttleNumber}dSl{LenghtOfShuttle}", $"Установка длины шаттла: {LenghtOfShuttle} мм");

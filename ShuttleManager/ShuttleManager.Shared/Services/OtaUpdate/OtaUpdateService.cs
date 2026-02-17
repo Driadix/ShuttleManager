@@ -15,6 +15,7 @@ public sealed class OtaUpdateService : IOtaUpdateService
     private const byte CMD_ERASE = 0x02;
     private const byte CMD_WRITE = 0x03;
     private const byte CMD_RUN = 0x04;
+    private const byte CMD_WRITE_STREAM = 0x05;
 
     private const byte RESP_OK = 0xAA;
     private const byte RESP_FAIL = 0xFF;
@@ -58,54 +59,67 @@ public sealed class OtaUpdateService : IOtaUpdateService
     // ================= STM =================
 
     private async Task<OtaResult> RunStmAsync(
-        string ip,
-        byte[] fw,
-        IProgress<OtaProgress>? progress,
-        CancellationToken token)
+    string ip,
+    byte[] fw,
+    IProgress<OtaProgress>? progress,
+    CancellationToken token)
     {
-        _logger.LogInformation("Starting STM32 OTA update to {Ip}", ip);
+        _logger.LogInformation("Starting STM32 OTA update to {Ip} (Stream Optimized)", ip);
 
         using var client = new TcpClient();
         client.NoDelay = true;
-        await client.ConnectAsync(ip, STM_PORT);
+        client.SendBufferSize = 64 * 1024;
+
+        await client.ConnectAsync(ip, STM_PORT, token);
         using var stream = client.GetStream();
 
-        // INIT
+        // 1. INIT
         _logger.LogDebug("Sending CMD_INIT");
+        stream.ReadTimeout = 5000;
         await SendByte(stream, CMD_INIT, token);
         await EnsureOk(stream, token);
 
-        // ERASE
+        // 2. ERASE
+        _logger.LogDebug("Sending CMD_ERASE (Waiting up to 60s...)");
+        stream.ReadTimeout = 60000;
         await SendByte(stream, CMD_ERASE, token);
         await EnsureOk(stream, token);
 
-        int totalBlocks = (int)Math.Ceiling(fw.Length / 256.0);
+        // 3. STREAM WRITE
+        _logger.LogDebug("Sending CMD_WRITE_STREAM header");
+        await SendByte(stream, CMD_WRITE_STREAM, token);
+
+        var header = new byte[8];
+        BinaryPrimitives.WriteUInt32LittleEndian(header.AsSpan(0), STM_BASE_ADDRESS);
+        BinaryPrimitives.WriteUInt32LittleEndian(header.AsSpan(4), (uint)fw.Length);
+        await stream.WriteAsync(header, token);
+
+        stream.ReadTimeout = 5000;
+        await EnsureOk(stream, token);
+
+        _logger.LogDebug("Streaming firmware data...");
+
+        const int progressChunkSize = 8192;
         int offset = 0;
 
-        for (int i = 0; i < totalBlocks; i++)
+        while (offset < fw.Length)
         {
             token.ThrowIfCancellationRequested();
 
-            byte[] block = new byte[256];
-            int len = Math.Min(256, fw.Length - offset);
-            Buffer.BlockCopy(fw, offset, block, 0, len);
+            int len = Math.Min(progressChunkSize, fw.Length - offset);
 
-            uint addr = STM_BASE_ADDRESS + (uint)offset;
-            _logger.LogDebug("Sending CMD_WRITE for block {Block}/{Total}, address 0x{Addr:X8}, size {Size}", i + 1, totalBlocks, addr, len);
-            await SendByte(stream, CMD_WRITE, token);
-
-            var addrBytes = new byte[4];
-            BinaryPrimitives.WriteUInt32LittleEndian(addrBytes, addr);
-            await stream.WriteAsync(addrBytes, token);
-
-            await stream.WriteAsync(block, token);
-
-            await EnsureOk(stream, token);
+            await stream.WriteAsync(fw.AsMemory(offset, len), token);
 
             offset += len;
-
             progress?.Report(new OtaProgress(offset, fw.Length));
         }
+
+        // 4. WAIT FOR COMPLETION
+        _logger.LogDebug("Waiting for device processing...");
+        stream.ReadTimeout = 30000;
+        await EnsureOk(stream, token);
+
+        // 5. RUN
         _logger.LogDebug("Sending CMD_RUN");
         await SendByte(stream, CMD_RUN, token);
         await EnsureOk(stream, token);
@@ -123,7 +137,6 @@ public sealed class OtaUpdateService : IOtaUpdateService
         CancellationToken token)
     {
         using var client = new TcpClient();
-        client.NoDelay = true;
         await client.ConnectAsync(ip, ESP_PORT);
         using var stream = client.GetStream();
 
@@ -181,8 +194,10 @@ public sealed class OtaUpdateService : IOtaUpdateService
 
         if (read != 1 || buffer[0] != RESP_OK)
         {
-            Console.WriteLine("Received unexpected response: 0x{Resp:X2}", buffer);
-            throw new InvalidOperationException($"Device returned FAIL: {buffer}");
+            // Try to read a bit more if possible to see error, or just throw
+            var hex = BitConverter.ToString(buffer);
+            Console.WriteLine($"Received unexpected response: {hex}");
+            throw new InvalidOperationException($"Device returned FAIL (0x{hex})");
         }
     }
 }
