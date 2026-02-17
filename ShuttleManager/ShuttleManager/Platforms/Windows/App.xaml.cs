@@ -40,7 +40,7 @@ namespace ShuttleManager.WinUI
             var window = (Application.Windows.FirstOrDefault() as Microsoft.Maui.Controls.Window);
             if (window != null)
             {
-                window.Title = "[MICRON] Менеджер шаттлов S.V.2";
+                window.Title = "[MICRON] Менеджер шаттлов S.V.3";
                 var nativeWindow = window.Handler.PlatformView as Microsoft.UI.Xaml.Window;
                 if (nativeWindow != null)
                 {
@@ -50,7 +50,7 @@ namespace ShuttleManager.WinUI
 
                     if (appWindow != null)
                     {
-                        appWindow.Title = "[MICRON] Менеджер шаттлов S.V.2";
+                        appWindow.Title = "[MICRON] Менеджер шаттлов S.V.3";
                         // Устанавливаем размер окна
                         //appWindow.Resize(new Windows.Graphics.SizeInt32(3840, 2160));
                         //appWindow.Resize(new Windows.Graphics.SizeInt32(1920, 1080));
