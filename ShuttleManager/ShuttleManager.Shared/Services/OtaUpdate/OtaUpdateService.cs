@@ -84,15 +84,12 @@ public sealed class OtaUpdateService : IOtaUpdateService
     {
         using var client = new TcpClient();
         client.NoDelay = true;
-        client.SendBufferSize = 64 * 1024;
 
-        _logger.LogInformation("[STM] Connecting to {Ip}:{Port}...", ip, STM_PORT);
         await client.ConnectAsync(ip, STM_PORT, token);
         using var stream = client.GetStream();
 
-        // 1. INIT
-        _logger.LogInformation("[STM] Sending CMD_INIT (Entering Bootloader/Syncing)...");
-        stream.ReadTimeout = 5000;
+        _logger.LogDebug("Sending CMD_INIT");
+        stream.ReadTimeout = 2000;
         await SendByte(stream, CMD_INIT, token);
         await EnsureOk(stream, token);
         _logger.LogInformation("[STM] Bootloader Initialized.");
@@ -102,35 +99,29 @@ public sealed class OtaUpdateService : IOtaUpdateService
         _logger.LogInformation("[STM] Sending CMD_ERASE ({Mode} - This may take 30-45s)...", eraseMode);
         stream.ReadTimeout = 60000;
 
+        _logger.LogDebug("Sending CMD_ERASE (Waiting up to 60s...)");
+        stream.ReadTimeout = 60000;
         await SendByte(stream, CMD_ERASE, token);
         // Send Erase Mode Byte: 0x01 = Full, 0x00 = Smart
         await SendByte(stream, fullErase ? (byte)0x01 : (byte)0x00, token);
 
-        await EnsureOk(stream, token);
-        _logger.LogInformation("[STM] Flash Erased.");
-
-        // 3. STREAM WRITE
-        _logger.LogInformation("[STM] Starting Firmware Stream (Fast Mode)...");
-        await SendByte(stream, CMD_WRITE_STREAM, token);
-
-        var header = new byte[8];
-        BinaryPrimitives.WriteUInt32LittleEndian(header.AsSpan(0), STM_BASE_ADDRESS);
-        BinaryPrimitives.WriteUInt32LittleEndian(header.AsSpan(4), (uint)fw.Length);
-        await stream.WriteAsync(header, token);
-
         stream.ReadTimeout = 5000;
-        await EnsureOk(stream, token);
-
-        const int progressChunkSize = 8192;
+        int totalBlocks = (int)Math.Ceiling(fw.Length / 256.0);
         int offset = 0;
-        int lastLogPercent = 0;
 
-        while (offset < fw.Length)
+        byte[] packetBuffer = new byte[261];
+
+        for (int i = 0; i < totalBlocks; i++)
         {
             token.ThrowIfCancellationRequested();
 
-            int len = Math.Min(progressChunkSize, fw.Length - offset);
-            await stream.WriteAsync(fw.AsMemory(offset, len), token);
+            packetBuffer[0] = CMD_WRITE;
+
+            uint addr = STM_BASE_ADDRESS + (uint)offset;
+            BinaryPrimitives.WriteUInt32LittleEndian(packetBuffer.AsSpan(1), addr);
+
+            int len = Math.Min(256, fw.Length - offset);
+            Buffer.BlockCopy(fw, offset, packetBuffer, 5, len);
 
             offset += len;
             progress?.Report(new OtaProgress(offset, fw.Length));
@@ -143,13 +134,8 @@ public sealed class OtaUpdateService : IOtaUpdateService
             }
         }
 
-        // 4. WAIT FOR COMPLETION
-        _logger.LogInformation("[STM] Upload complete. Waiting for device processing & verification...");
-        stream.ReadTimeout = 45000;
-        await EnsureOk(stream, token);
+        _logger.LogDebug("Sending CMD_RUN");
 
-        // 5. RUN
-        _logger.LogInformation("[STM] Sending CMD_RUN (Rebooting target)...");
         await SendByte(stream, CMD_RUN, token);
         await EnsureOk(stream, token);
 
