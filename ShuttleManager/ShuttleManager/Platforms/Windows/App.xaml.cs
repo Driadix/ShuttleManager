@@ -51,7 +51,7 @@ namespace ShuttleManager.WinUI
 
                     if (appWindow != null)
                     {
-                        appWindow.Title = "[MICRON] Менеджер шаттлов S.V.3.1";
+                        appWindow.Title = "[MICRON] Менеджер шаттлов";
                         // Устанавливаем размер окна
                         //appWindow.Resize(new Windows.Graphics.SizeInt32(3840, 2160));
                         //appWindow.Resize(new Windows.Graphics.SizeInt32(1920, 1080));
