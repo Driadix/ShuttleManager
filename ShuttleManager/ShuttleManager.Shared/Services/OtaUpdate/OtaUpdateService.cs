@@ -58,15 +58,17 @@ public sealed class OtaUpdateService : IOtaUpdateService
     // ================= STM =================
 
     private async Task<OtaResult> RunStmAsync(
-    string ip,
-    byte[] fw,
-    IProgress<OtaProgress>? progress,
-    CancellationToken token)
-{
-    _logger.LogInformation("Starting STM32 OTA update to {Ip} (Optimized)", ip);
+        string ip,
+        byte[] fw,
+        IProgress<OtaProgress>? progress,
+        CancellationToken token)
+    {
+        _logger.LogInformation("Starting STM32 OTA update to {Ip}", ip);
 
-    using var client = new TcpClient();
-    client.NoDelay = true;
+        using var client = new TcpClient();
+        client.NoDelay = true;
+        await client.ConnectAsync(ip, STM_PORT);
+        using var stream = client.GetStream();
 
     await client.ConnectAsync(ip, STM_PORT, token);
     using var stream = client.GetStream();
@@ -99,9 +101,9 @@ public sealed class OtaUpdateService : IOtaUpdateService
         int len = Math.Min(256, fw.Length - offset);
         Buffer.BlockCopy(fw, offset, packetBuffer, 5, len);
 
-        if (len < 256)
-        {
-            Array.Fill(packetBuffer, (byte)0xFF, 5 + len, 256 - len);
+            offset += len;
+
+            progress?.Report(new OtaProgress(offset, fw.Length));
         }
 
         await stream.WriteAsync(packetBuffer, token);
@@ -129,6 +131,7 @@ public sealed class OtaUpdateService : IOtaUpdateService
         CancellationToken token)
     {
         using var client = new TcpClient();
+        client.NoDelay = true;
         await client.ConnectAsync(ip, ESP_PORT);
         using var stream = client.GetStream();
 

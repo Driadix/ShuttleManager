@@ -6,13 +6,6 @@ using System.Text;
 
 namespace ShuttleManager.Shared.Models;
 
-public struct ShuttleTelemetry
-{
-    public string Ip { get; set; }
-    public string Vatt { get; set; }
-    public string Volt { get; set; }
-}
-
 public class Shuttle
 {
     public string ShuttleNumber { get; set; } = "";
@@ -63,7 +56,7 @@ public class Shuttle
     public DateTime LastConnectionCheck { get; set; } = DateTime.MinValue;
 
     public string FullStatusBlock { get; set; } = "";
-    private List<string> _terminalMessages = new();
+    private List<string> _terminalMessages = [];
 
     private readonly object _lock = new object();
 
@@ -91,12 +84,11 @@ public class Shuttle
         }
     }
 
-
     public List<string> GetTerminalMessages()
     {
         lock (_lock)
         {
-            return new List<string>(_terminalMessages);
+            return [.. _terminalMessages];
         }
     }
 }

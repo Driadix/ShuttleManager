@@ -14,8 +14,8 @@
         <h5 style="display:inline; margin-right: 5px; ">Панель управления шаттлами</h5>
         <label>dark mode: </label>
         <input class="form-check-input" type="checkbox" id="themeToggle" @ref="toggleElement" checked="@IsDarkMode" @onchange="OnDarkModeChanged" role="switch" />
-    </div>    
-    
+    </div>
+
     <div class="row">
         <div class="col-md-3">
             <div class="card mb-3">
@@ -175,7 +175,6 @@
         }
     }
 
-
     private async Task RefreshConnectedShuttles()
     {
         var connectedShuttles = HubClientService.GetConnectedShuttles();
@@ -282,7 +281,7 @@
                     IPAddress = ipAddress,
                     IsConnected = true,
                     ConnectionTime = DateTime.Now,
-                    LastActivity = DateTime.Now,                     
+                    LastActivity = DateTime.Now,
                     ShuttleNumber = correctNum,
 
                 };
@@ -331,9 +330,6 @@
         HubClientService.Disconnected -= OnShuttleDisconnected;
         _cleanupTimer?.Dispose();
     }
-
-
-
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {

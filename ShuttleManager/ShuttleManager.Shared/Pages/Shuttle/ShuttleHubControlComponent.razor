@@ -67,11 +67,11 @@
                         <p class="small text-muted">@Uptime</p>
                     </div>
                 </div>
-            </div>          
+            </div>
             <div class="container-fluid">
                 <div class="row">
                     <div class="col-md-7">
-                        <div class="card mb-2" >
+                        <div class="card mb-2">
                             <div class="card-body p-2" style="height: 100%">
                                 <div class="d-flex justify-content-between align-items-center mb-2">
                                     <label>Терминал: </label>
@@ -119,7 +119,7 @@
                                         </div>
                                         <div class="col-12">
                                             <button class="btn btn-danger btn-sm w-100 " @onclick="SendRebootShuttleCommand" title="Полная перезагрузка шаттла">
-                                                <i class="bi bi-arrow-repeat me-1"></i>ребут
+                                                <i class="bi bi-arrow-repeat me-1"></i>Перезагрузка
                                             </button>
                                         </div>
                                     </div>
@@ -146,8 +146,6 @@
                                                     <i class="bi bi-arrow-clockwise me-1"></i>Установить время
                                                 </button>
                                             </div>
-
-                                           
                                         </div>
                                         <div class="col-6">
                                             <div class="mb-1">
@@ -165,9 +163,6 @@
                                                     <i class="bi bi-arrow-clockwise me-1"></i>Логи шаттла
                                                 </button>
                                             </div>
-                                           
-
-                                            
                                         </div>
                                     </div>
                                 </div>
@@ -325,6 +320,22 @@
                                                     </button>
                                                 </div>
                                             </div>
+                                            <div class="col-12 mb-1">
+                                                <div class="input-group input-group-sm">
+                                                    <InputNumber @bind-Value="LenghtOfShuttle" class="form-control form-control-sm" min="0" max="5000" step="10" placeholder="=Длина шаттла" />
+                                                    <button class="btn btn-secondary btn-sm w-75" value="0" @onclick="SendSetlenghtOfShuttleCommand" title="Установить длину шаттла">
+                                                        Длина шаттла, мм 📏
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div class="col-12 mb-1">
+                                                <div class="input-group input-group-sm">
+                                                    <InputNumber @bind-Value="DistanceOfEdge" class="form-control form-control-sm" min="0" max="500" step="10" placeholder="Растояние от края" />
+                                                    <button class="btn btn-secondary btn-sm w-75" value="0" @onclick="SendSetDistanceOfEdgeShuttleCommand" title="Установить расстояние от края">
+                                                        Растояние от края, мм ┤
+                                                    </button>
+                                                </div>
+                                            </div>
                                         </div>
                                         <div class="col-12 mb-1 mt-1">
                                             <button class="btn btn-outline-primary btn-sm w-100" @onclick="SendSaveSettingCommand" title="Сохранить текущие параметры в память">
@@ -333,8 +344,8 @@
                                         </div>
                                     </div>
                                 </div>
-                            </div>  
-                            
+                            </div>
+
                             <div class="col-12">
                                 <div class="card">
                                     <div class="card-header p-1">
@@ -382,8 +393,10 @@
     private int ShuttleNumberInput = 1;
     private int MoveDistanceBackwardInput = 0;
     private int MoveDistanceForwardInput = 0;
+    private int DistanceOfEdge = 0;
+    private int LenghtOfShuttle = 0;
     private int MaxSpeedInput = 0;
-    private int MinPowerInput = 0; 
+    private int MinPowerInput = 0;
     private int PallentDistance = 0;
     private string NameOfFirmware = "";
     private bool isAndroid => OperatingSystem.IsAndroid();
@@ -427,7 +440,7 @@
             if (!Directory.Exists($"{AppContext.BaseDirectory}/logs"))
             {
                 Directory.CreateDirectory($"{AppContext.BaseDirectory}/logs");
-            }          
+            }
             HubClientService.Connected += OnHubConnected;
             HubClientService.Disconnected += OnHubDisconnected;
             HubClientService.LogReceived += OnLogReceived;
@@ -490,7 +503,7 @@
         _otaCts?.Cancel();
     }
 
-    private string SeeCorrentNumberShuttle (string numberShuttle)
+    private string SeeCorrentNumberShuttle(string numberShuttle)
     {
         if (char.IsDigit(numberShuttle[0]))
         {
@@ -778,7 +791,6 @@
         }
     }
 
-
     private async void OnLogReceived(string ip, string log)
     {
         if (!IsEventForThisShuttle(ip)) return;
@@ -834,7 +846,7 @@
             else
             {
                 var success = await HubClientService.SendCommandToShuttleAsync(Shuttle.IPAddress, command, 1000);
-            }           
+            }
         }
         catch (OperationCanceledException)
         {
@@ -851,9 +863,6 @@
             StateHasChanged();
         }
     }
-
-
-
 
     private async Task OpenLogsShuttle()
     {
@@ -924,6 +933,11 @@
     private async Task SendSetMaxSpeedShuttleCommand() => await SendCommandAsync($"{Shuttle.ShuttleNumber}dSp{MaxSpeedInput}", $"Установка максимальной скорости: {MaxSpeedInput}%");
     private async Task SendSetMinPowerShuttleCommand() => await SendCommandAsync($"{Shuttle.ShuttleNumber}dBc{MinPowerInput}", $"Установка уровня защиты батареи: {MinPowerInput}%");
     private async Task SendSetPalletBetweenDistanceShuttleCommand() => await SendCommandAsync($"{Shuttle.ShuttleNumber}dDm{PallentDistance}", $"Установка межпаллетного расстояния: {PallentDistance}%");
+
+
+    private async Task SendSetDistanceOfEdgeShuttleCommand() => await SendCommandAsync($"{Shuttle.ShuttleNumber}dMс{DistanceOfEdge}", $"Установка расстояния от края: {DistanceOfEdge} мм");
+    private async Task SendSetlenghtOfShuttleCommand() => await SendCommandAsync($"{Shuttle.ShuttleNumber}dSl{LenghtOfShuttle}", $"Установка длины шаттла: {LenghtOfShuttle} мм");
+
     private async Task SetTime()
     {
         DateTime currentTime = DateTime.Now;
@@ -949,7 +963,7 @@
         if (argOpenBrowser == "UPD")
         {
             url += "update";
-        }       
+        }
         try
         {
             var uri = new Uri(url);
@@ -1066,7 +1080,7 @@
     private async Task ChoiceFile()
     {
         var file = await FilePickerService.PickFileAsync();
-        _selectedFile = file!.FilePath;
+        _selectedFile = file?.FilePath;
     }
 
     public void Dispose()
