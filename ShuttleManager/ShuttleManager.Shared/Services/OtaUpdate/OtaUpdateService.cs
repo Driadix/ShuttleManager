@@ -67,60 +67,51 @@ public sealed class OtaUpdateService : IOtaUpdateService
 
         using var client = new TcpClient();
         client.NoDelay = true;
-        await client.ConnectAsync(ip, STM_PORT);
+
+        await client.ConnectAsync(ip, STM_PORT, token);
         using var stream = client.GetStream();
 
-    await client.ConnectAsync(ip, STM_PORT, token);
-    using var stream = client.GetStream();
+        _logger.LogDebug("Sending CMD_INIT");
+        stream.ReadTimeout = 2000;
+        await SendByte(stream, CMD_INIT, token);
+        await EnsureOk(stream, token);
 
-    _logger.LogDebug("Sending CMD_INIT");
-    stream.ReadTimeout = 2000;
-    await SendByte(stream, CMD_INIT, token);
-    await EnsureOk(stream, token);
+        _logger.LogDebug("Sending CMD_ERASE (Waiting up to 60s...)");
+        stream.ReadTimeout = 60000;
+        await SendByte(stream, CMD_ERASE, token);
+        await EnsureOk(stream, token);
 
-    _logger.LogDebug("Sending CMD_ERASE (Waiting up to 60s...)");
-    stream.ReadTimeout = 60000;
-    await SendByte(stream, CMD_ERASE, token);
-    await EnsureOk(stream, token);
+        stream.ReadTimeout = 5000;
+        int totalBlocks = (int)Math.Ceiling(fw.Length / 256.0);
+        int offset = 0;
 
-    stream.ReadTimeout = 5000;
-    int totalBlocks = (int)Math.Ceiling(fw.Length / 256.0);
-    int offset = 0;
+        byte[] packetBuffer = new byte[261];
 
-    byte[] packetBuffer = new byte[261];
+        for (int i = 0; i < totalBlocks; i++)
+        {
+            token.ThrowIfCancellationRequested();
 
-    for (int i = 0; i < totalBlocks; i++)
-    {
-        token.ThrowIfCancellationRequested();
+            packetBuffer[0] = CMD_WRITE;
 
-        packetBuffer[0] = CMD_WRITE;
+            uint addr = STM_BASE_ADDRESS + (uint)offset;
+            BinaryPrimitives.WriteUInt32LittleEndian(packetBuffer.AsSpan(1), addr);
 
-        uint addr = STM_BASE_ADDRESS + (uint)offset;
-        BinaryPrimitives.WriteUInt32LittleEndian(packetBuffer.AsSpan(1), addr);
-
-        int len = Math.Min(256, fw.Length - offset);
-        Buffer.BlockCopy(fw, offset, packetBuffer, 5, len);
+            int len = Math.Min(256, fw.Length - offset);
+            Buffer.BlockCopy(fw, offset, packetBuffer, 5, len);
 
             offset += len;
 
             progress?.Report(new OtaProgress(offset, fw.Length));
         }
 
-        await stream.WriteAsync(packetBuffer, token);
+        _logger.LogDebug("Sending CMD_RUN");
 
+        await SendByte(stream, CMD_RUN, token);
         await EnsureOk(stream, token);
 
-        offset += len;
-        progress?.Report(new OtaProgress(offset, fw.Length));
+        _logger.LogInformation("STM32 OTA update completed successfully");
+        return OtaResult.Success();
     }
-
-    _logger.LogDebug("Sending CMD_RUN");
-    await SendByte(stream, CMD_RUN, token);
-    await EnsureOk(stream, token);
-
-    _logger.LogInformation("STM32 OTA update completed successfully");
-    return OtaResult.Success();
-}
 
     // ================= ESP =================
 
