@@ -71,13 +71,13 @@
                                         <button class="btn btn-sm btn-outline-danger me-1" @onclick="ClearTerminal" title="Очистить терминал">
                                             <i class="bi bi-trash">❌</i>
                                         </button>
-                                        <span class="badge bg-secondary">@Shuttle.GetTerminalMessages().Count строк</span>
+                                        <span class="badge bg-secondary">@Shuttle.TerminalMessageCount строк</span>
                                     </div>
                                 </div>
                                 <div id="terminalContainer_@ComponentId"
                                      class="terminal-container border rounded"
                                      style="height: 448px;">
-                                    @((MarkupString)TerminalOutputHtml)
+                                    @foreach (var line in Shuttle.GetTerminalMessages()) { <div class="terminal-line">@line</div> }
                                 </div>
                                 <div class="input-group input-group-sm mt-2">
                                     <span class="input-group-text">
@@ -395,7 +395,6 @@
     // private string NameOfFirmware = "";
     private bool isAndroid => OperatingSystem.IsAndroid();
 
-    private string _terminalOutputHtml = "";
     private string _manualCommand = "";
     private string _componentId = Guid.NewGuid().ToString();
     private bool _isCommandInProgress;
@@ -413,7 +412,6 @@
     private string BatteryData => $"Батарея: {Shuttle.BatteryVoltage:F1}V | Заряд: {Shuttle.BatteryPercentage}%";
     private bool IsConnected => Shuttle.IsConnected;
     private string ComponentId => _componentId;
-    private string TerminalOutputHtml => _terminalOutputHtml;
     private string ManualCommand { get => _manualCommand; set => _manualCommand = value; }
     private string pathLogShuttle = "";
 
@@ -1015,24 +1013,19 @@
     private void ClearTerminal()
     {
         Shuttle.ClearTerminalMessage();
-        _terminalOutputHtml = "";
         StateHasChanged();
     }
 
     private void LogToTerminal(string message)
     {
-        var lines = message.Split(new[] { "\r\n", "\n", "\r" }, StringSplitOptions.RemoveEmptyEntries);
 
         Shuttle.AddTerminalMessage(message);
 
-        if (Shuttle.GetTerminalMessages().Count > 1000)
+        if (Shuttle.TerminalMessageCount > 1000)
         {
             Shuttle.RemoveTerminalMessage();
         }
 
-        _terminalOutputHtml = string.Join("",
-            Shuttle.GetTerminalMessages().Select(line =>
-                $"<div class=\"terminal-line\">{System.Net.WebUtility.HtmlEncode(line)}</div>"));
         StateHasChanged();
         _ = ScrollTerminalToBottomAsync();
     }

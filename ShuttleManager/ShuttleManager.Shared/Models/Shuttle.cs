@@ -84,6 +84,17 @@ public class Shuttle
         }
     }
 
+    public int TerminalMessageCount
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _terminalMessages.Count;
+            }
+        }
+    }
+
     public List<string> GetTerminalMessages()
     {
         lock (_lock)
