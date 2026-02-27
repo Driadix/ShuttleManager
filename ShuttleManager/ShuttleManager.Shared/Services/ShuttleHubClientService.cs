@@ -149,17 +149,24 @@ namespace ShuttleManager.Shared.Services
 
             while (true)
             {
-                byte[] currentBufferData = connection.ReceiveBuffer.ToArray();
-                int newlineIndex = Array.IndexOf(currentBufferData, (byte)'\n');
+                // Bolt Optimization: Avoid ToArray() in loop to reduce GC pressure
+                byte[] currentBuffer = connection.ReceiveBuffer.GetBuffer();
+                int currentLength = (int)connection.ReceiveBuffer.Length;
+                int newlineIndex = Array.IndexOf(currentBuffer, (byte)'\n', 0, currentLength);
 
                 if (newlineIndex >= 0)
                 {
-                    string line = System.Text.Encoding.UTF8.GetString(currentBufferData, 0, newlineIndex);
-                    connection.ReceiveBuffer.SetLength(0);
-                    if (newlineIndex + 1 < currentBufferData.Length)
+                    string line = System.Text.Encoding.UTF8.GetString(currentBuffer, 0, newlineIndex);
+
+                    // Shift remaining data
+                    int remaining = currentLength - (newlineIndex + 1);
+                    if (remaining > 0)
                     {
-                        connection.ReceiveBuffer.Write(currentBufferData, newlineIndex + 1, currentBufferData.Length - newlineIndex - 1);
+                        Buffer.BlockCopy(currentBuffer, newlineIndex + 1, currentBuffer, 0, remaining);
                     }
+                    connection.ReceiveBuffer.SetLength(remaining);
+                    connection.ReceiveBuffer.Position = remaining;
+
                     if (line.Length > 0 && line[^1] == '\r')
                         line = line[..^1];
 
@@ -171,7 +178,8 @@ namespace ShuttleManager.Shared.Services
                     if (connection.ReceiveBuffer.Length == 0)
                         return null;
 
-                    string partialLine = System.Text.Encoding.UTF8.GetString(connection.ReceiveBuffer.ToArray());
+                    byte[] finalBuffer = connection.ReceiveBuffer.GetBuffer();
+                    string partialLine = System.Text.Encoding.UTF8.GetString(finalBuffer, 0, (int)connection.ReceiveBuffer.Length);
                     connection.ReceiveBuffer.SetLength(0);
                     if (partialLine.Length > 0 && partialLine[^1] == '\r')
                         partialLine = partialLine[..^1];
